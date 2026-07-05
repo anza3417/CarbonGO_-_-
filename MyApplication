@@ -1,0 +1,4200 @@
+package com.example.myapplication
+
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
+import android.content.Intent
+import android.net.Uri
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.example.myapplication.R.drawable.f1
+import kotlinx.coroutines.delay
+import org.json.JSONArray
+import org.json.JSONObject
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent { AppRoot() }
+    }
+}
+@Composable
+fun AppRoot() {
+    var started by remember { mutableStateOf(false) }
+
+    if (started) {
+        CarbonGoApp()
+    } else {
+        StartScreen(
+            onStartClick = { started = true }
+        )
+    }
+}
+enum class Page {
+    HOME, ABOUT_CARBON, KNOWLEDGE, SDG, DATA, SUSTAINABLE, ENVIRONMENT, STEPS, GAME
+}
+enum class RecordType { TRANSPORT, ELECTRIC, WATER, GAS }
+
+data class CarbonRecord(
+    val category: String,
+    val name: String,
+    val detail: String,
+    val carbon: Double
+)
+
+data class Segment(
+    val from: String,
+    val to: String,
+    val km: Double
+)
+
+val hsrSegments = listOf(
+    Segment("南港", "台北", 7.1),
+    Segment("台北", "板橋", 9.2),
+    Segment("板橋", "桃園", 29.2),
+    Segment("桃園", "新竹", 29.9),
+    Segment("新竹", "苗栗", 32.7),
+    Segment("苗栗", "台中", 50.8),
+    Segment("台中", "彰化", 60.9),
+    Segment("彰化", "雲林", 28.2),
+    Segment("雲林", "嘉義", 24.6),
+    Segment("嘉義", "台南", 33.1),
+    Segment("台南", "左營", 40.5)
+)
+
+val hsrCarbonTable = mapOf(
+    "南港" to mapOf("台北" to 0.27, "板橋" to 0.48, "桃園" to 1.34, "新竹" to 2.22, "苗栗" to 3.18, "台中" to 4.96, "彰化" to 5.79, "雲林" to 6.51, "嘉義" to 7.48, "台南" to 9.31, "左營" to 10.23),
+    "台北" to mapOf("板橋" to 0.21, "桃園" to 1.07, "新竹" to 1.95, "苗栗" to 2.91, "台中" to 4.69, "彰化" to 5.52, "雲林" to 6.24, "嘉義" to 7.21, "台南" to 9.04, "左營" to 9.96),
+    "板橋" to mapOf("桃園" to 0.86, "新竹" to 1.73, "苗栗" to 2.69, "台中" to 4.48, "彰化" to 5.31, "雲林" to 6.03, "嘉義" to 7.00, "台南" to 8.83, "左營" to 9.75),
+    "桃園" to mapOf("新竹" to 0.88, "苗栗" to 1.84, "台中" to 3.62, "彰化" to 4.45, "雲林" to 5.17, "嘉義" to 6.15, "台南" to 7.97, "左營" to 8.89),
+    "新竹" to mapOf("苗栗" to 0.96, "台中" to 2.75, "彰化" to 3.57, "雲林" to 4.30, "嘉義" to 5.27, "台南" to 7.10, "左營" to 8.02),
+    "苗栗" to mapOf("台中" to 1.79, "彰化" to 2.61, "雲林" to 3.34, "嘉義" to 4.31, "台南" to 6.14, "左營" to 7.06),
+    "台中" to mapOf("彰化" to 0.83, "雲林" to 1.55, "嘉義" to 2.52, "台南" to 4.35, "左營" to 5.27),
+    "彰化" to mapOf("雲林" to 0.72, "嘉義" to 1.69, "台南" to 3.52, "左營" to 4.44),
+    "雲林" to mapOf("嘉義" to 0.97, "台南" to 2.80, "左營" to 3.72),
+    "嘉義" to mapOf("台南" to 1.83, "左營" to 2.75),
+    "台南" to mapOf("左營" to 0.92)
+)
+
+val mrtSegments = mapOf(
+    "紅線 R 線" to listOf(
+        Segment("小港", "高雄國際機場", 1.5),
+        Segment("高雄國際機場", "草衙", 1.8),
+        Segment("草衙", "前鎮高中", 1.1),
+        Segment("前鎮高中", "凱旋", 1.2),
+        Segment("凱旋", "獅甲", 1.3),
+        Segment("獅甲", "三多商圈", 1.0),
+        Segment("三多商圈", "中央公園", 1.3),
+        Segment("中央公園", "美麗島", 0.7),
+        Segment("美麗島", "高雄車站", 0.9),
+        Segment("高雄車站", "後驛", 1.0),
+        Segment("後驛", "凹子底", 1.0),
+        Segment("凹子底", "巨蛋", 1.0),
+        Segment("巨蛋", "生態園區", 1.2),
+        Segment("生態園區", "左營", 1.6),
+        Segment("左營", "世運", 1.7),
+        Segment("世運", "油廠國小", 0.7),
+        Segment("油廠國小", "楠梓科技園區", 1.3),
+        Segment("楠梓科技園區", "後勁", 1.1),
+        Segment("後勁", "都會公園", 1.0),
+        Segment("都會公園", "青埔", 1.7),
+        Segment("青埔", "橋頭糖廠", 1.1),
+        Segment("橋頭糖廠", "橋頭火車站", 0.9),
+        Segment("橋頭火車站", "岡山高醫", 2.5),
+        Segment("岡山高醫", "岡山車站", 1.4)
+    ),
+    "橘線 O 線" to listOf(
+        Segment("大寮", "鳳山國中", 2.3),
+        Segment("鳳山國中", "大東", 1.0),
+        Segment("大東", "鳳山", 0.8),
+        Segment("鳳山", "鳳山西站", 0.8),
+        Segment("鳳山西站", "衛武營", 0.8),
+        Segment("衛武營", "苓雅運動園區", 0.7),
+        Segment("苓雅運動園區", "五塊厝", 0.7),
+        Segment("五塊厝", "文化中心", 1.0),
+        Segment("文化中心", "信義國小", 0.6),
+        Segment("信義國小", "美麗島", 1.0),
+        Segment("美麗島", "前金", 0.8),
+        Segment("前金", "鹽埕埔", 1.3),
+        Segment("鹽埕埔", "哈瑪星", 1.1)
+    )
+)
+
+fun stationsFromSegments(segments: List<Segment>): List<String> {
+    if (segments.isEmpty()) return emptyList()
+    val stations = mutableListOf(segments.first().from)
+    segments.forEach { stations.add(it.to) }
+    return stations
+}
+
+fun routeDistance(segments: List<Segment>, start: String, end: String): Double {
+    val stations = stationsFromSegments(segments)
+    val startIndex = stations.indexOf(start)
+    val endIndex = stations.indexOf(end)
+    if (startIndex == -1 || endIndex == -1 || startIndex == endIndex) return 0.0
+
+    val from = minOf(startIndex, endIndex)
+    val to = maxOf(startIndex, endIndex)
+
+    var total = 0.0
+    for (i in from until to) {
+        total += segments[i].km
+    }
+    return String.format(Locale.US, "%.2f", total).toDouble()
+}
+
+fun hsrCarbon(start: String, end: String): Double {
+    if (start == end) return 0.0
+    hsrCarbonTable[start]?.get(end)?.let { return it }
+    hsrCarbonTable[end]?.get(start)?.let { return it }
+    return 0.0
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CarbonGoApp() {
+    var currentPage by remember { mutableStateOf(Page.HOME) }
+    var showLoginDialog by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = Color(0xFF12632E),
+                drawerContentColor = Color.White,
+                modifier = Modifier.width(280.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(280.dp)
+                        .padding(bottom = 16.dp)
+                ) {
+                    Spacer(Modifier.height(24.dp))
+
+                    Text(
+                        "碳排GO 選單",
+                        modifier = Modifier.padding(20.dp),
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    DrawerMenuItem("每日紀錄") {
+                        currentPage = Page.HOME
+                        scope.launch { drawerState.close() }
+                    }
+                    DrawerMenuItem("認識碳排放量") {
+                        currentPage = Page.ABOUT_CARBON
+                        scope.launch { drawerState.close() }
+                    }
+                    DrawerMenuItem("碳排知識") {
+                        currentPage = Page.KNOWLEDGE
+                        scope.launch { drawerState.close() }
+                    }
+                    DrawerMenuItem("SDG相關議題") {
+                        currentPage = Page.SDG
+                        scope.launch { drawerState.close() }
+                    }
+                    DrawerMenuItem("歷年碳排放量") {
+                        currentPage = Page.DATA
+                        scope.launch { drawerState.close() }
+                    }
+                    DrawerMenuItem("永續發展") {
+                        currentPage = Page.SUSTAINABLE
+                        scope.launch { drawerState.close() }
+                    }
+                    DrawerMenuItem("守護環境") {
+                        currentPage = Page.ENVIRONMENT
+                        scope.launch { drawerState.close() }
+                    }
+                    DrawerMenuItem("計步器功能") {
+                        currentPage = Page.STEPS
+                        scope.launch { drawerState.close() }
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .clickable { showLoginDialog = true },
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1F7A3A))
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(
+                                "使用者",
+                                color = Color.White,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 18.sp
+                            )
+                            Text(
+                                "尚未登入，點擊登入 / 註冊",
+                                color = Color(0xFFE8F8DF),
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+    )
+
+    {
+        if (currentPage == Page.GAME) {
+        MiniGameEntry(onBack = { currentPage = Page.HOME })
+        return@ModalNavigationDrawer
+    }
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("碳排GO") },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            scope.launch { drawerState.open() }
+                        }) {
+                            Text("☰", fontSize = 28.sp)
+                        }
+                    }
+                )
+            },
+            bottomBar = {
+                BottomNavBar(currentPage) { currentPage = it }
+            }
+        )
+
+        { padding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFFF4FBF2), Color(0xFFEEF8EF))
+                        )
+                    )
+            ) {
+                when (currentPage) {
+                    Page.HOME -> DailyCarbonPage()
+                    Page.ABOUT_CARBON -> AboutCarbonPage()
+                    Page.KNOWLEDGE -> CarbonKnowledgePage()
+                    Page.SDG -> SdgPage()
+                    Page.DATA -> EmissionDataPage()
+                    Page.SUSTAINABLE -> SustainablePage()
+                    Page.ENVIRONMENT -> EnvironmentPage()
+                    Page.STEPS -> StepCounterPage()
+                    Page.GAME -> MiniGameEntry(onBack = { currentPage = Page.HOME })                }
+            }
+        }
+    }
+
+}
+@Composable
+fun DrawerMenuItem(text: String, onClick: () -> Unit) {
+    Text(
+        text = text,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 22.dp, vertical = 14.dp),
+        color = Color.White,
+        fontSize = 17.sp,
+        fontWeight = FontWeight.Bold
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+fun carbonLogsToJson(logs: Map<String, List<CarbonRecord>>): String {
+    val root = JSONObject()
+
+    logs.forEach { (dateKey, records) ->
+        val array = JSONArray()
+        records.forEach { record ->
+            array.put(
+                JSONObject()
+                    .put("category", record.category)
+                    .put("name", record.name)
+                    .put("detail", record.detail)
+                    .put("carbon", record.carbon)
+            )
+        }
+        root.put(dateKey, array)
+    }
+
+    return root.toString()
+}
+
+fun carbonLogsFromJson(json: String?): Map<String, MutableList<CarbonRecord>> {
+    if (json.isNullOrBlank()) return emptyMap()
+
+    return runCatching {
+        val root = JSONObject(json)
+        val result = mutableMapOf<String, MutableList<CarbonRecord>>()
+        val keys = root.keys()
+
+        while (keys.hasNext()) {
+            val dateKey = keys.next()
+            val array = root.getJSONArray(dateKey)
+            val records = mutableListOf<CarbonRecord>()
+
+            for (index in 0 until array.length()) {
+                val item = array.getJSONObject(index)
+                records.add(
+                    CarbonRecord(
+                        category = item.optString("category"),
+                        name = item.optString("name"),
+                        detail = item.optString("detail"),
+                        carbon = item.optDouble("carbon", 0.0)
+                    )
+                )
+            }
+
+            result[dateKey] = records
+        }
+
+        result
+    }.getOrDefault(emptyMap())
+}
+
+fun saveCarbonLogs(context: Context, logs: Map<String, List<CarbonRecord>>) {
+    context
+        .getSharedPreferences("daily_carbon_save", Context.MODE_PRIVATE)
+        .edit()
+        .putString("logs", carbonLogsToJson(logs))
+        .apply()
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DailyCarbonPage() {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences("daily_carbon_save", Context.MODE_PRIVATE)
+    }
+
+    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.TAIWAN) }
+    val displayFormat = remember { SimpleDateFormat("yyyy 年 MM 月 dd 日", Locale.TAIWAN) }
+    val monthFormat = remember { SimpleDateFormat("yyyy-MM", Locale.TAIWAN) }
+
+    var selectedDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var currentRealDayKey by remember { mutableStateOf(dateFormat.format(Date())) }
+
+    val selectedKey = dateFormat.format(Date(selectedDateMillis))
+    val selectedText = displayFormat.format(Date(selectedDateMillis))
+    val selectedMonthKey = monthFormat.format(Date(selectedDateMillis))
+
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showRecords by remember { mutableStateOf(false) }
+    var showMonthRecords by remember { mutableStateOf(false) }
+
+    val logs = remember {
+        mutableStateMapOf<String, MutableList<CarbonRecord>>().apply {
+            putAll(carbonLogsFromJson(prefs.getString("logs", "")))
+        }
+    }
+
+    var recordType by remember { mutableStateOf(RecordType.TRANSPORT) }
+
+    var transportName by remember { mutableStateOf("汽車") }
+    var distance by remember { mutableStateOf("1") }
+
+    val hsrStations = remember { stationsFromSegments(hsrSegments) }
+    var hsrStart by remember { mutableStateOf(hsrStations.firstOrNull() ?: "") }
+    var hsrEnd by remember { mutableStateOf(hsrStations.lastOrNull() ?: "") }
+
+    var mrtLine by remember { mutableStateOf(mrtSegments.keys.firstOrNull() ?: "") }
+    val mrtStations = remember(mrtLine) { stationsFromSegments(mrtSegments[mrtLine] ?: emptyList()) }
+    var mrtStart by remember { mutableStateOf(mrtStations.firstOrNull() ?: "") }
+    var mrtEnd by remember { mutableStateOf(mrtStations.lastOrNull() ?: "") }
+
+    LaunchedEffect(transportName, hsrStart, hsrEnd, mrtLine, mrtStart, mrtEnd) {
+        if (transportName == "高鐵") {
+            distance = routeDistance(hsrSegments, hsrStart, hsrEnd).toString()
+        }
+
+        if (transportName == "捷運") {
+            val segments = mrtSegments[mrtLine] ?: emptyList()
+            if (!mrtStations.contains(mrtStart)) mrtStart = mrtStations.firstOrNull() ?: ""
+            if (!mrtStations.contains(mrtEnd)) mrtEnd = mrtStations.lastOrNull() ?: ""
+            distance = routeDistance(segments, mrtStart, mrtEnd).toString()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val realToday = dateFormat.format(Date())
+            if (currentRealDayKey != realToday) {
+                currentRealDayKey = realToday
+                selectedDateMillis = System.currentTimeMillis()
+            }
+            delay(60_000)
+        }
+    }
+
+    var applianceName by remember { mutableStateOf("吹風機｜900W") }
+    var watt by remember { mutableStateOf("900") }
+    var hours by remember { mutableStateOf("1") }
+    var days by remember { mutableStateOf("1") }
+
+    var waterAmount by remember { mutableStateOf("1") }
+
+    var gasName by remember { mutableStateOf("LPG 桶裝瓦斯") }
+    var gasAmount by remember { mutableStateOf("1") }
+
+    val currentRecord = remember(
+        recordType, transportName, distance,
+        hsrStart, hsrEnd, mrtLine, mrtStart, mrtEnd,
+        applianceName, watt, hours, days, waterAmount, gasName, gasAmount
+    ) {
+        calculateRecord(
+            recordType = recordType,
+            transportName = transportName,
+            distance = distance,
+            hsrStart = hsrStart,
+            hsrEnd = hsrEnd,
+            mrtLine = mrtLine,
+            mrtStart = mrtStart,
+            mrtEnd = mrtEnd,
+            applianceName = applianceName,
+            watt = watt,
+            hours = hours,
+            days = days,
+            waterAmount = waterAmount,
+            gasName = gasName,
+            gasAmount = gasAmount
+        )
+    }
+
+    val todayRecords = logs[selectedKey] ?: mutableListOf()
+    val total = todayRecords.sumOf { it.carbon }
+
+    val monthRecords = logs
+        .filterKeys { it.startsWith(selectedMonthKey) }
+        .toSortedMap()
+    val monthTotal = monthRecords.values.flatten().sumOf { it.carbon }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showRecords = true },
+            shape = RoundedCornerShape(26.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFDCF5D5))
+        ) {
+            Column(
+                modifier = Modifier.padding(22.dp),
+                horizontalAlignment = Alignment.Start
+            ) {
+                Text(
+                    "今日碳排放",
+                    color = Color(0xFF12632E),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    "${"%.4f".format(total)} kg CO2e",
+                    color = Color(0xFF12632E),
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Black
+                )
+
+                Spacer(Modifier.height(6.dp))
+
+                Text(
+                    "目前 ${todayRecords.size} 筆紀錄，點擊可查看今日明細",
+                    color = Color(0xFF64806D),
+                    fontSize = 14.sp
+                )
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        Button(
+            onClick = { showMonthRecords = true },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF12632E)),
+            shape = RoundedCornerShape(50.dp)
+        ) {
+            Text("查看本月紀錄")
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showDatePicker = true },
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Row(
+                modifier = Modifier.padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LineIcon("calendar", true)
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("紀錄日期", color = Color(0xFF64806D), fontSize = 14.sp)
+                    Text(selectedText, color = Color(0xFF12632E), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(26.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text("新增紀錄", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12632E))
+                Spacer(Modifier.height(14.dp))
+
+                SimpleDropdown(
+                    label = "選擇紀錄類型",
+                    selected = when (recordType) {
+                        RecordType.TRANSPORT -> "交通"
+                        RecordType.ELECTRIC -> "電力"
+                        RecordType.WATER -> "水"
+                        RecordType.GAS -> "瓦斯"
+                    },
+                    options = listOf("交通", "電力", "水", "瓦斯")
+                ) {
+                    recordType = when (it) {
+                        "交通" -> RecordType.TRANSPORT
+                        "電力" -> RecordType.ELECTRIC
+                        "水" -> RecordType.WATER
+                        else -> RecordType.GAS
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                when (recordType) {
+                    RecordType.TRANSPORT -> {
+                        SimpleDropdown(
+                            label = "交通方式",
+                            selected = transportName,
+                            options = listOf("高鐵", "捷運", "公車", "客運", "機車", "汽車", "電動自行車", "腳踏車", "步行")
+                        ) { transportName = it }
+
+                        Spacer(Modifier.height(10.dp))
+
+                        if (transportName == "高鐵") {
+                            SimpleDropdown("高鐵起點站", hsrStart, hsrStations) { hsrStart = it }
+                            Spacer(Modifier.height(10.dp))
+                            SimpleDropdown("高鐵終點站", hsrEnd, hsrStations) { hsrEnd = it }
+                            Spacer(Modifier.height(10.dp))
+
+                            val km = routeDistance(hsrSegments, hsrStart, hsrEnd)
+                            val officialCarbon = hsrCarbon(hsrStart, hsrEnd)
+
+                            InfoCard("官方計算區間：$hsrStart 到 $hsrEnd，距離 $km 公里\n官方站間碳足跡 ${"%.2f".format(officialCarbon)} kg CO2e")
+                        } else if (transportName == "捷運") {
+                            SimpleDropdown("選擇捷運路線", mrtLine, mrtSegments.keys.toList()) {
+                                mrtLine = it
+                                val newStations = stationsFromSegments(mrtSegments[it] ?: emptyList())
+                                mrtStart = newStations.firstOrNull() ?: ""
+                                mrtEnd = newStations.lastOrNull() ?: ""
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+
+                            SimpleDropdown("捷運起點站", mrtStart, mrtStations) { mrtStart = it }
+                            Spacer(Modifier.height(10.dp))
+                            SimpleDropdown("捷運終點站", mrtEnd, mrtStations) { mrtEnd = it }
+                            Spacer(Modifier.height(10.dp))
+
+                            val km = routeDistance(mrtSegments[mrtLine] ?: emptyList(), mrtStart, mrtEnd)
+                            InfoCard("計算區間：$mrtLine $mrtStart 到 $mrtEnd，距離 $km 公里")
+                        } else {
+                            NumberInput("行駛距離，單位公里", distance) { distance = it }
+                        }
+
+                        FormulaCard(
+                            if (transportName == "高鐵")
+                                "高鐵使用官方站間碳足跡資料。"
+                            else
+                                "交通碳排放量 = 距離 x 交通方式排放係數"
+                        )
+                    }
+
+                    RecordType.ELECTRIC -> {
+                        SimpleDropdown(
+                            label = "電器項目",
+                            selected = applianceName,
+                            options = listOf(
+                                "吹風機｜900W",
+                                "電鍋｜1250W",
+                                "電風扇｜200W",
+                                "冰箱｜100W",
+                                "微波爐｜1200W",
+                                "烤箱｜800W",
+                                "冷氣｜1000W",
+                                "電腦｜150W",
+                                "手機充電10分鐘｜18W"
+                            )
+                        ) {
+                            applianceName = it
+                            watt = it.substringAfter("｜").substringBefore("W")
+                            if (it.contains("10分鐘")) {
+                                hours = "0.167"
+                                days = "1"
+                            }
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+                        NumberInput("每天使用時間，單位小時", hours) { hours = it }
+                        NumberInput("使用天數", days) { days = it }
+                        FormulaCard("電力碳排放量 = W / 1000 x 小時 x 天數 x 電力排放係數 0.494")
+                    }
+
+                    RecordType.WATER -> {
+                        NumberInput("用水量，單位度", waterAmount) { waterAmount = it }
+                        FormulaCard("用水碳排放量 = 用水度數 x 0.159 kgCO2e/度")
+                    }
+
+                    RecordType.GAS -> {
+                        SimpleDropdown(
+                            label = "瓦斯類型",
+                            selected = gasName,
+                            options = listOf("LPG 桶裝瓦斯", "NG 天然瓦斯")
+                        ) { gasName = it }
+
+                        Spacer(Modifier.height(10.dp))
+                        NumberInput("使用量", gasAmount) { gasAmount = it }
+                        FormulaCard("LPG 使用 L 計算係數 2.21，NG 使用 m3 計算係數 2.643")
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                ResultBox("本次碳排放量", "${"%.4f".format(currentRecord.carbon)} kg CO2e")
+                Spacer(Modifier.height(10.dp))
+                ResultBox("今日累積碳排放量", "${"%.4f".format(total)} kg CO2e", true)
+
+                Spacer(Modifier.height(14.dp))
+
+                Button(
+                    onClick = {
+                        val list = logs.getOrPut(selectedKey) { mutableListOf() }
+                        list.add(currentRecord)
+                        logs[selectedKey] = list
+                        saveCarbonLogs(context, logs)
+                        Toast.makeText(context, "已新增到每日紀錄", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23853B)),
+                    shape = RoundedCornerShape(50.dp)
+                ) {
+                    Text("新增到今日紀錄")
+                }
+            }
+        }
+    }
+
+    if (showDatePicker) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = selectedDateMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    selectedDateMillis = state.selectedDateMillis ?: selectedDateMillis
+                    showDatePicker = false
+                }) { Text("確認") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+            }
+        ) {
+            DatePicker(state = state)
+        }
+    }
+
+    if (showRecords) {
+        ModalBottomSheet(onDismissRequest = { showRecords = false }) {
+            Column(Modifier.padding(22.dp)) {
+                Text("今日紀錄明細", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF12632E))
+                Spacer(Modifier.height(12.dp))
+
+                if (todayRecords.isEmpty()) {
+                    Text("今天還沒有任何紀錄", color = Color(0xFF748A78))
+                } else {
+                    todayRecords.forEachIndexed { index, item ->
+                        RecordItem(
+                            index = index,
+                            item = item,
+                            onDelete = {
+                                val list = logs[selectedKey]
+                                list?.removeAt(index)
+                                logs[selectedKey] = list ?: mutableListOf()
+                                saveCarbonLogs(context, logs)
+                            }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(30.dp))
+            }
+        }
+    }
+
+    if (showMonthRecords) {
+        ModalBottomSheet(onDismissRequest = { showMonthRecords = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(22.dp)
+            ) {
+                Text(
+                    "本月碳排放紀錄",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF12632E)
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    "$selectedMonthKey 總排放量：${"%.4f".format(monthTotal)} kg CO2e",
+                    color = Color(0xFF12632E),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(Modifier.height(14.dp))
+
+                if (monthRecords.isEmpty()) {
+                    Text("這個月還沒有紀錄", color = Color(0xFF748A78))
+                } else {
+                    monthRecords.forEach { (date, records) ->
+                        val dayTotal = records.sumOf { it.carbon }
+
+                        Text(
+                            "$date：${"%.4f".format(dayTotal)} kg CO2e",
+                            color = Color(0xFF12632E),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Black
+                        )
+
+                        Spacer(Modifier.height(6.dp))
+
+                        records.forEachIndexed { index, item ->
+                            RecordItem(
+                                index = index,
+                                item = item,
+                                onDelete = {
+                                    val list = logs[date]
+                                    list?.remove(item)
+                                    logs[date] = list ?: mutableListOf()
+                                    saveCarbonLogs(context, logs)
+                                }
+                            )
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+                    }
+                }
+
+                Spacer(Modifier.height(30.dp))
+            }
+        }
+    }
+}
+
+fun calculateRecord(
+    recordType: RecordType,
+    transportName: String,
+    distance: String,
+    hsrStart: String,
+    hsrEnd: String,
+    mrtLine: String,
+    mrtStart: String,
+    mrtEnd: String,
+    applianceName: String,
+    watt: String,
+    hours: String,
+    days: String,
+    waterAmount: String,
+    gasName: String,
+    gasAmount: String
+): CarbonRecord {
+    fun d(v: String) = v.toDoubleOrNull() ?: 0.0
+
+    return when (recordType) {
+        RecordType.TRANSPORT -> {
+            if (transportName == "高鐵") {
+                val km = routeDistance(hsrSegments, hsrStart, hsrEnd)
+                val carbon = hsrCarbon(hsrStart, hsrEnd)
+                CarbonRecord(
+                    category = "交通",
+                    name = "高鐵｜$hsrStart 到 $hsrEnd",
+                    detail = "$km 公里｜官方站間碳足跡 ${"%.2f".format(carbon)} kg CO2e",
+                    carbon = carbon
+                )
+            } else if (transportName == "捷運") {
+                val km = routeDistance(mrtSegments[mrtLine] ?: emptyList(), mrtStart, mrtEnd)
+                val factor = 0.0132
+                CarbonRecord(
+                    category = "交通",
+                    name = "捷運 $mrtLine｜$mrtStart 到 $mrtEnd",
+                    detail = "$km 公里 x $factor kgCO2e/km",
+                    carbon = km * factor
+                )
+            } else {
+                val factor = mapOf(
+                    "公車" to 0.0286,
+                    "客運" to 0.0286,
+                    "機車" to 0.0500,
+                    "汽車" to 0.1020,
+                    "電動自行車" to 0.0,
+                    "腳踏車" to 0.0,
+                    "步行" to 0.0
+                )[transportName] ?: 0.0
+
+                val km = d(distance)
+
+                CarbonRecord(
+                    category = "交通",
+                    name = transportName,
+                    detail = "$km 公里 x $factor kgCO2e/km",
+                    carbon = km * factor
+                )
+            }
+        }
+
+        RecordType.ELECTRIC -> {
+            val kwh = d(watt) / 1000.0 * d(hours) * d(days)
+            CarbonRecord(
+                category = "電力",
+                name = applianceName.substringBefore("｜"),
+                detail = "${"%.4f".format(kwh)} 度 x 0.494",
+                carbon = kwh * 0.494
+            )
+        }
+
+        RecordType.WATER -> {
+            val amount = d(waterAmount)
+            CarbonRecord(
+                category = "水",
+                name = "自來水",
+                detail = "$amount 度 x 0.159",
+                carbon = amount * 0.159
+            )
+        }
+
+        RecordType.GAS -> {
+            val amount = d(gasAmount)
+            val factor = if (gasName.contains("LPG")) 2.21 else 2.643
+            val unit = if (gasName.contains("LPG")) "L" else "m3"
+            CarbonRecord(
+                category = "瓦斯",
+                name = gasName,
+                detail = "$amount $unit x $factor",
+                carbon = amount * factor
+            )
+        }
+    }
+}
+
+@Composable
+fun NumberInput(label: String, value: String, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+    )
+    Spacer(Modifier.height(10.dp))
+}
+
+@Composable
+fun InfoCard(text: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF4FBF2))
+    ) {
+        Text(
+            text,
+            modifier = Modifier.padding(14.dp),
+            color = Color(0xFF315B3E),
+            fontSize = 14.sp,
+            lineHeight = 21.sp
+        )
+    }
+}
+
+@Composable
+fun FormulaCard(text: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF4FBF2))
+    ) {
+        Text(text, modifier = Modifier.padding(14.dp), color = Color(0xFF496755), fontSize = 14.sp)
+    }
+}
+
+@Composable
+fun ResultBox(title: String, value: String, strong: Boolean = false) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (strong) Color(0xFFDCF5D5) else Color(0xFFF4FBF2)
+        )
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, color = Color(0xFF496755))
+            Text(value, color = Color(0xFF12632E), fontSize = 24.sp, fontWeight = FontWeight.Black)
+        }
+    }
+}
+
+@Composable
+fun RecordItem(index: Int, item: CarbonRecord, onDelete: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF4FBF2))
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("${index + 1}. ${item.category}｜${item.name}", fontWeight = FontWeight.Bold, color = Color(0xFF12632E))
+                Text(item.detail, color = Color(0xFF496755), fontSize = 13.sp)
+                Text("${"%.4f".format(item.carbon)} kg CO2e", color = Color(0xFF173923), fontWeight = FontWeight.Bold)
+            }
+            TextButton(onClick = onDelete) {
+                Text("刪除", color = Color(0xFFB44938))
+            }
+        }
+    }
+}
+
+@Composable
+fun SimpleDropdown(label: String, selected: String, options: List<String>, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column {
+        Text(label, fontWeight = FontWeight.Bold, color = Color(0xFF2D5B3A))
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = true },
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFBFFFB))
+        ) {
+            Text(selected, modifier = Modifier.padding(16.dp), color = Color(0xFF254733))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach {
+                DropdownMenuItem(
+                    text = { Text(it) },
+                    onClick = {
+                        onSelect(it)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SimplePage(title: String, content: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(26.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(40.dp))
+        Text(title, fontSize = 30.sp, fontWeight = FontWeight.Black, color = Color(0xFF12632E), textAlign = TextAlign.Center)
+        Spacer(Modifier.height(20.dp))
+        Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Text(content, modifier = Modifier.padding(24.dp), fontSize = 17.sp, color = Color(0xFF42564A), lineHeight = 26.sp, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+
+@Composable
+fun BottomNavBar(currentPage: Page, onPageChange: (Page) -> Unit) {
+    NavigationBar(containerColor = Color.White, tonalElevation = 8.dp) {
+        BottomNavItem(Page.HOME, currentPage, "每日紀錄", "home", onPageChange)
+        BottomNavItem(Page.KNOWLEDGE, currentPage, "碳排知識", "leaf", onPageChange)
+        BottomNavItem(Page.SDG, currentPage, "SDG議題", "globe", onPageChange)
+        BottomNavItem(Page.STEPS, currentPage, "計步器", "step", onPageChange)
+        BottomNavItem(Page.GAME, currentPage, "小遊戲", "game", onPageChange)
+    }
+}
+
+@Composable
+fun RowScope.BottomNavItem(page: Page, currentPage: Page, label: String, iconType: String, onPageChange: (Page) -> Unit) {
+    NavigationBarItem(
+        selected = currentPage == page,
+        onClick = { onPageChange(page) },
+        icon = { LineIcon(iconType, currentPage == page) },
+        label = { Text(label, fontSize = 10.sp) },
+        colors = NavigationBarItemDefaults.colors(
+            selectedIconColor = Color(0xFF12632E),
+            selectedTextColor = Color(0xFF12632E),
+            indicatorColor = Color(0xFFE8F8DF),
+            unselectedIconColor = Color(0xFF6F8174),
+            unselectedTextColor = Color(0xFF6F8174)
+        )
+    )
+}
+
+@Composable
+fun LineIcon(type: String, selected: Boolean) {
+    val color = if (selected) Color(0xFF12632E) else Color(0xFF6F8174)
+
+    Canvas(modifier = Modifier.size(26.dp)) {
+        val stroke = Stroke(width = 3f)
+
+        when (type) {
+            "home", "calendar" -> {
+                drawRect(color, topLeft = Offset(5f, 7f), size = Size(size.width - 10f, size.height - 8f), style = stroke)
+                drawLine(color, Offset(5f, 13f), Offset(size.width - 5f, 13f), strokeWidth = 3f)
+                drawLine(color, Offset(10f, 4f), Offset(10f, 10f), strokeWidth = 3f)
+                drawLine(color, Offset(20f, 4f), Offset(20f, 10f), strokeWidth = 3f)
+            }
+
+            "leaf" -> {
+                drawOval(color, topLeft = Offset(6f, 5f), size = Size(16f, 20f), style = stroke)
+                drawLine(color, Offset(20f, 8f), Offset(7f, 24f), strokeWidth = 3f)
+            }
+
+            "globe" -> {
+                drawCircle(color, radius = size.minDimension / 2.5f, center = center, style = stroke)
+                drawLine(color, Offset(center.x, 5f), Offset(center.x, size.height - 5f), strokeWidth = 2.5f)
+                drawLine(color, Offset(5f, center.y), Offset(size.width - 5f, center.y), strokeWidth = 2.5f)
+            }
+
+            "chart" -> {
+                drawLine(color, Offset(6f, size.height - 6f), Offset(size.width - 4f, size.height - 6f), strokeWidth = 3f)
+                drawLine(color, Offset(8f, size.height - 6f), Offset(8f, 10f), strokeWidth = 3f)
+                drawLine(color, Offset(11f, 18f), Offset(16f, 13f), strokeWidth = 3f)
+                drawLine(color, Offset(16f, 13f), Offset(21f, 16f), strokeWidth = 3f)
+                drawLine(color, Offset(21f, 16f), Offset(25f, 8f), strokeWidth = 3f)
+            }
+
+            "game" -> {
+                drawRoundRect(
+                    color,
+                    topLeft = Offset(4f, 9f),
+                    size = Size(size.width - 8f, 14f),
+                    cornerRadius = CornerRadius(6f, 6f),
+                    style = stroke
+                )
+                drawLine(color, Offset(10f, 16f), Offset(16f, 16f), strokeWidth = 3f)
+                drawLine(color, Offset(13f, 13f), Offset(13f, 19f), strokeWidth = 3f)
+                drawCircle(color, radius = 2.2f, center = Offset(21f, 15f))
+                drawCircle(color, radius = 2.2f, center = Offset(26f, 18f))
+            }
+            "step" -> {
+                drawOval(color, Offset(8f, 5f), Size(10f, 18f), style = stroke)
+                drawOval(color, Offset(20f, 14f), Size(9f, 16f), style = stroke)
+                drawOval(color, Offset(8f, 31f), Size(10f, 18f), style = stroke)
+                drawOval(color, Offset(22f, 40f), Size(9f, 16f), style = stroke)
+            }
+        }
+    }
+}
+@Composable
+fun AboutCarbonPage() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            "認識碳排放量",
+            fontSize = 30.sp,
+            fontWeight = FontWeight.Black,
+            color = Color(0xFF12632E)
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        ImageCard(
+            imageRes = R.drawable.co,
+            title = "碳排放是什麼？",
+            text = "碳排放是溫室氣體排放的一種，主要來自燃燒石油、天然氣、煤炭等化石燃料所產生的二氧化碳。雖然多數溫室氣體無色無味，不像 PM2.5 會直接造成明顯空氣污染感受，但它會逐漸加劇全球暖化。"
+        )
+
+        Spacer(Modifier.height(22.dp))
+
+        Text(
+            "空氣污染 VS 碳排放",
+            fontSize = 25.sp,
+            fontWeight = FontWeight.Black,
+            color = Color(0xFF12632E)
+        )
+
+        Spacer(Modifier.height(14.dp))
+
+        ImageCard(
+            imageRes = R.drawable.one,
+            title = "空氣污染",
+            text = "常見種類包含懸浮微粒、揮發性有機物、一氧化碳、臭氧、硫氧化物與氮氧化物等。它對人體健康影響較直接，可能造成呼吸道疾病、心血管疾病、過敏、氣喘，甚至增加肺癌與中風風險。"
+        )
+
+        Spacer(Modifier.height(14.dp))
+
+        ImageCard(
+            imageRes = R.drawable.co2,
+            title = "碳排放",
+            text = "碳排放包含二氧化碳、甲烷、氧化亞氮、氫氟碳化物等溫室氣體。它會吸收熱能並加劇全球暖化，造成海平面上升、珊瑚礁白化，以及更多熱浪、乾旱、森林大火、暴雨與暴雪等極端氣候。"
+        )
+
+        Spacer(Modifier.height(24.dp))
+    }
+}
+@Composable
+fun ImageCard(
+    imageRes: Int,
+    title: String,
+    text: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Column {
+            Image(
+                painter = painterResource(id = imageRes),
+                contentDescription = title,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(190.dp),
+                contentScale = ContentScale.Crop
+            )
+
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    title,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF12632E)
+                )
+
+                Spacer(Modifier.height(10.dp))
+
+                Text(
+                    text,
+                    fontSize = 15.sp,
+                    color = Color(0xFF4D6D59),
+                    lineHeight = 24.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CarbonKnowledgePage() {
+    var selectedTopic by remember { mutableStateOf<KnowledgeTopic?>(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            "生活中的碳排知識",
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Black,
+            color = Color(0xFF12632E)
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            "碳排放不只存在於交通與工廠，也藏在每天使用的產品、能源與生活選擇中。",
+            fontSize = 14.sp,
+            color = Color(0xFF5F7668),
+            textAlign = TextAlign.Center,
+            lineHeight = 22.sp
+        )
+
+        Spacer(Modifier.height(20.dp))
+
+        KnowledgeRow(
+            KnowledgeTopic("3C 碳排", "phone"),
+            KnowledgeTopic("減碳方法", "leaf"),
+            onClick = { selectedTopic = it }
+        )
+
+        KnowledgeRow(
+            KnowledgeTopic("氣候影響", "cloud"),
+            KnowledgeTopic("碳足跡", "foot"),
+            onClick = { selectedTopic = it }
+        )
+
+        KnowledgeRow(
+            KnowledgeTopic("能源係數參考", "energy"),
+            KnowledgeTopic("未來目標", "target"),
+            onClick = { selectedTopic = it }
+        )
+    }
+
+    selectedTopic?.let {
+        KnowledgeDialog(
+            topic = it,
+            onClose = { selectedTopic = null }
+        )
+    }
+}
+
+data class KnowledgeTopic(
+    val title: String,
+    val iconType: String
+)
+
+@Composable
+fun KnowledgeRow(
+    left: KnowledgeTopic,
+    right: KnowledgeTopic,
+    onClick: (KnowledgeTopic) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        KnowledgeSquareCard(
+            topic = left,
+            modifier = Modifier.weight(1f),
+            onClick = onClick
+        )
+
+        KnowledgeSquareCard(
+            topic = right,
+            modifier = Modifier.weight(1f),
+            onClick = onClick
+        )
+    }
+
+    Spacer(Modifier.height(14.dp))
+}
+
+@Composable
+fun KnowledgeSquareCard(
+    topic: KnowledgeTopic,
+    modifier: Modifier = Modifier,
+    onClick: (KnowledgeTopic) -> Unit
+) {
+    Card(
+        modifier = modifier
+            .height(132.dp)
+            .clickable { onClick(topic) },
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            KnowledgeLineIcon(topic.iconType)
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                topic.title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF173923),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+fun KnowledgeLineIcon(type: String) {
+    val color = Color(0xFF0C8395)
+
+    Canvas(modifier = Modifier.size(68.dp)) {
+        val stroke = Stroke(width = 4f)
+
+        when (type) {
+            "phone" -> {
+                drawRoundRect(color, Offset(18f, 8f), Size(32f, 52f), CornerRadius(8f, 8f), style = stroke)
+                drawLine(color, Offset(28f, 18f), Offset(40f, 18f), strokeWidth = 4f)
+                drawCircle(color, radius = 3f, center = Offset(34f, 50f))
+            }
+
+            "leaf" -> {
+                drawOval(color, Offset(13f, 15f), Size(44f, 30f), style = stroke)
+                drawLine(color, Offset(16f, 50f), Offset(56f, 22f), strokeWidth = 4f)
+                drawLine(color, Offset(16f, 56f), Offset(55f, 56f), strokeWidth = 4f)
+            }
+
+            "cloud" -> {
+                drawCircle(color, radius = 15f, center = Offset(30f, 34f), style = stroke)
+                drawCircle(color, radius = 17f, center = Offset(43f, 30f), style = stroke)
+                drawLine(color, Offset(14f, 45f), Offset(58f, 45f), strokeWidth = 4f)
+                drawLine(color, Offset(24f, 56f), Offset(48f, 56f), strokeWidth = 4f)
+            }
+
+            "foot" -> {
+                drawOval(color, Offset(13f, 7f), Size(25f, 42f), style = stroke)
+                drawOval(color, Offset(41f, 28f), Size(20f, 31f), style = stroke)
+                drawLine(color, Offset(20f, 58f), Offset(14f, 66f), strokeWidth = 4f)
+                drawLine(color, Offset(53f, 62f), Offset(61f, 68f), strokeWidth = 4f)
+            }
+
+            "energy" -> {
+                drawLine(color, Offset(34f, 6f), Offset(34f, 31f), strokeWidth = 4f)
+                drawPath(
+                    androidx.compose.ui.graphics.Path().apply {
+                        moveTo(25f, 31f)
+                        lineTo(45f, 31f)
+                        lineTo(58f, 62f)
+                        lineTo(12f, 62f)
+                        close()
+                    },
+                    color,
+                    style = stroke
+                )
+                drawLine(color, Offset(24f, 48f), Offset(44f, 48f), strokeWidth = 4f)
+                drawCircle(color, radius = 2.5f, center = Offset(26f, 56f))
+            }
+
+            "target" -> {
+                drawCircle(color, radius = 27f, center = Offset(34f, 36f), style = stroke)
+                drawCircle(color, radius = 15f, center = Offset(34f, 36f), style = stroke)
+                drawCircle(color, radius = 5f, center = Offset(34f, 36f), style = stroke)
+                drawLine(color, Offset(50f, 20f), Offset(65f, 5f), strokeWidth = 4f)
+                drawLine(color, Offset(59f, 5f), Offset(68f, 5f), strokeWidth = 4f)
+                drawLine(color, Offset(65f, 5f), Offset(65f, 14f), strokeWidth = 4f)
+            }
+        }
+    }
+}
+@Composable
+fun KnowledgeDialog(
+    topic: KnowledgeTopic,
+    onClose: () -> Unit
+) {
+    Dialog(onDismissRequest = onClose) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 620.dp),
+            shape = RoundedCornerShape(26.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(22.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        topic.title,
+                        modifier = Modifier.weight(1f),
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF12632E)
+                    )
+
+                    TextButton(onClick = onClose) {
+                        Text("關閉")
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                getKnowledgeSections(topic.title).forEach { section ->
+                    KnowledgeImageSection(section)
+                    Spacer(Modifier.height(16.dp))
+                }
+            }
+        }
+    }
+}
+
+data class KnowledgeSection(
+    val imageRes: Int? = null,
+    val title: String,
+    val text: String
+)
+
+@Composable
+fun KnowledgeImageSection(section: KnowledgeSection) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF4FBF2))
+    ) {
+        Column {
+            section.imageRes?.let {
+                Image(
+                    painter = painterResource(id = it),
+                    contentDescription = section.title,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(170.dp),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    section.title,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF12632E)
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    section.text,
+                    fontSize = 14.sp,
+                    color = Color(0xFF42564A),
+                    lineHeight = 23.sp
+                )
+            }
+        }
+    }
+}
+
+fun getKnowledgeSections(title: String): List<KnowledgeSection> {
+    return when (title) {
+        "3C 碳排" -> listOf(
+            KnowledgeSection(
+                R.drawable.gtx,
+                "3C 用品也有碳排放",
+                "手機、電腦、耳機、滑鼠、顯示卡等產品，在原物料、生產、運輸、使用與回收階段都會產生碳排放。"
+            ),
+            KnowledgeSection(
+                R.drawable.gigabyte,
+                "GIGABYTE RTX 4090 Gaming",
+                "該產品約有 143.90 公斤 CO₂ 當量。其碳排主要來自原物料階段，占比高達 96.3%。產品可回收率約 96.9%，包裝回收率約 85.9%。"
+            ),
+            KnowledgeSection(
+                R.drawable.ip16,
+                "iPhone 16",
+                "iPhone 16 系列強調永續材料與低碳供應鏈。透過使用更多低碳電力與回收材料，可降低產品生命週期中的溫室氣體排放。"
+            ),
+            KnowledgeSection(
+                R.drawable.msi,
+                "MSI Cubi NUC 迷你電腦",
+                "Cubi NUC 使用部分 PCR 塑膠與 FSC 認證紙箱包材，並提供 Power Meter 軟體協助使用者了解能源消耗、碳排放與電力成本。"
+            )
+        )
+
+        "減碳方法" -> listOf(
+            KnowledgeSection(
+                R.drawable.transportation,
+                "利用大眾運輸通勤",
+                "日常通勤可選擇公車、火車、捷運、輕軌或公共腳踏車，減少汽機車使用，降低交通造成的碳排放。"
+            ),
+            KnowledgeSection(
+                R.drawable.energy,
+                "使用節能家電",
+                "使用節能標章家電可以降低用電量與電費，也能減少發電造成的碳排放。冷氣搭配風扇、定期清洗濾網也能節能。"
+            ),
+            KnowledgeSection(
+                R.drawable.fruits,
+                "支持當季量產蔬果",
+                "選擇在地、當季食材能減少長途運輸與高耗能栽培造成的碳排放，也能支持在地農業。"
+            ),
+            KnowledgeSection(
+                R.drawable.close,
+                "日常節能習慣",
+                "隨手關燈、拔掉待機電器、縮短洗澡時間、使用 LED 燈泡，都是生活中容易做到的減碳行動。"
+            )
+        )
+
+        "氣候影響" -> listOf(
+            KnowledgeSection(
+                R.drawable.ice,
+                "氣候與環境層面",
+                "溫室氣體濃度升高會導致全球平均氣溫與海洋溫度上升，引發熱浪、乾旱、洪水、森林大火與暴雪等極端氣候。"
+            ),
+            KnowledgeSection(
+                R.drawable.co2if,
+                "生態與人類生活層面",
+                "氣候變遷會造成棲地改變、生物多樣性下降、糧食與水資源危機，也會增加經濟損失與健康風險。"
+            )
+        )
+
+        "碳足跡" -> listOf(
+            KnowledgeSection(
+                R.drawable.co2epa,
+                "什麼是碳足跡？",
+                "碳足跡是個人、企業或產品在生命週期中直接與間接產生的溫室氣體總排放量，通常以 CO₂e 表示。"
+            ),
+            KnowledgeSection(
+                R.drawable.g135,
+                "產品碳標籤應用",
+                "產品碳標籤能顯示商品生命週期中的碳排量，幫助消費者識別低碳商品，也協助企業找出排碳熱點。"
+            )
+        )
+
+        "能源係數參考" -> listOf(
+            KnowledgeSection(
+                null,
+                "交通",
+                "依交通工具每公里碳排係數估算；高鐵使用官方站間碳足跡資料，捷運依站距與 0.0132 kgCO₂e/km 估算。"
+            ),
+            KnowledgeSection(
+                null,
+                "電力、水與瓦斯",
+                "電力使用 0.494 kgCO₂e/度估算；水、LPG、天然氣則依對應係數估算。"
+            )
+        )
+
+        "未來目標" -> listOf(
+            KnowledgeSection(
+                null,
+                "提升紀錄完整度",
+                "未來可整合交通、用電、用水、瓦斯與步數，讓使用者完整記錄每日碳排。"
+            ),
+            KnowledgeSection(
+                null,
+                "加入更多生活情境",
+                "未來可加入飲食、購物、3C 產品使用等碳排估算，讓紀錄更貼近日常。"
+            ),
+            KnowledgeSection(
+                null,
+                "強化遊戲化任務",
+                "透過任務、成就與回饋，提高使用者持續減碳的動機。"
+            )
+        )
+
+        else -> emptyList()
+    }
+}
+data class SdgNews(
+    val title: String,
+    val tag: String,
+    val source: String,
+    val date: String,
+    val url: String
+)
+
+@Composable
+fun SdgPage() {
+    val context = LocalContext.current
+    var selectedSdg by remember { mutableStateOf("SDG6") }
+
+    val sdgLabels = mapOf(
+        "SDG6" to "淨水與衛生",
+        "SDG7" to "潔淨能源",
+        "SDG12" to "責任消費",
+        "SDG13" to "氣候行動",
+        "SDG14" to "海洋生態",
+        "SDG15" to "陸域生態"
+    )
+
+    val sdgData = mapOf(
+        "SDG6" to listOf(
+            SdgNews("2026世界水日特別報導：從性別視角看見全球水治理的真問題", "淨水與衛生", "聯合報願景工程", "2026", "https://river.udn.com/river/story/124359/9445781"),
+            SdgNews("確保環境品質及永續管理環境資源", "永續目標", "國家永續發展委員會", "SDG6", "https://ncsd.ndc.gov.tw/Fore/SDG06"),
+            SdgNews("藍色協議的實踐：荷蘭運用資產管理方法實現永續發展目標6", "國際案例", "Dutch Water Sector", "SDG6", "https://www.dutchwatersector.com/news/the-blue-deal-in-action-the-dutch-approach-to-asset-management-for-achieving-sdg6")
+        ),
+        "SDG7" to listOf(
+            SdgNews("楠梓加氫站與聯華林德樹谷示範性加氫站聯合啟用", "潔淨能源", "經濟部", "能源轉型", "https://www.moea.gov.tw/Mns/populace/news/News.aspx?kind=1&menu_id=40&news_id=121352"),
+            SdgNews("SDSN報告呼籲整合歐洲永續發展議程", "國際永續", "IISD SDG Knowledge Hub", "SDG7", "https://sdg.iisd.org/news/sdsn-report-calls-for-integration-of-european-sustainability-agendas/"),
+            SdgNews("丹娜絲吹翻的10萬片太陽能板流向何處？直擊廢棄光電板的善後與清理難題", "再生能源", "報導者", "光電回收", "https://www.twreporter.org/a/after-typhoon-danas-the-recycling-of-solar-photovoltaic-panels")
+        ),
+        "SDG12" to listOf(
+            SdgNews("減少食物浪費：為永續未來承擔全球責任", "責任消費", "FUNDAY", "SDG12", "https://funday.asia/blogDesktop/blog.asp?blog=1000"),
+            SdgNews("廚餘多元再利用", "廚餘回收", "環境部資源循環署", "資源循環", "https://www.ema.gov.tw/affairs/general-waste/food-waste/301.html"),
+            SdgNews("裸買、重複使用、循環容器的10大常見問題，大部分都有解決方案", "循環容器", "綠色和平", "減塑生活", "https://www.greenpeace.org/taiwan/update/37574/")
+        ),
+        "SDG13" to listOf(
+            SdgNews("16 歲氣候行動者 Greta 聯合國厲斥：如果你們選擇搞砸我們的未來，我們永遠不會原諒你們！", "氣候行動", "Right Plus 多多益善", "氣候倡議", "https://rightplus.org/2019/09/23/climate-change/"),
+            SdgNews("2024年全球各大區域公共巴士電動化進程與市場現況", "電動化", "E-Value", "公共運輸", "https://www.evalue.com.tw/research/110"),
+            SdgNews("何謂「碳稅」？目前各國的實際徵收狀況！", "碳定價", "方格子", "碳稅", "https://vocus.cc/article/69d92b83fd89780001bc602d")
+        ),
+        "SDG14" to listOf(
+            SdgNews("從數據看見垃圾全貌──談ICC淨灘表格的演進與應用", "海洋廢棄物", "黑潮海洋文教基金會", "淨灘", "https://www.kuroshio.org.tw/newsite/article02.php?info_id=807"),
+            SdgNews("遲到6年！全球10%海洋受保護達標了", "海洋保護", "環境資訊中心", "海洋保護區", "https://e-info.org.tw/node/243311"),
+            SdgNews("2025、2030、2035減塑時間表", "減塑政策", "紡織產業綜合研究所", "減塑", "https://www.textilesinfo.tw/mod/news/")
+        ),
+        "SDG15" to listOf(
+            SdgNews("證交所2025年 SDGs「植樹造林 綠化土地」響應 SDG15生態多樣性", "陸域生態", "經濟日報", "SDG15", "https://money.udn.com/money/story/5607/8800411"),
+            SdgNews("日月光環基會串聯山海生態，從大雪山到頭城農場打造台灣永續綠網", "生態保育", "日月光環保永續基金會", "永續綠網", "https://www.aseepsfund.org.tw/news-detail/237__38/"),
+            SdgNews("4年伐木面積增加40% 巴西總統魯拉誓言「2030亞馬遜零砍伐」", "森林保護", "Yahoo 新聞", "亞馬遜", "https://tw.news.yahoo.com/")
+        )
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("SDG 相關議題", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF12632E))
+        Spacer(Modifier.height(8.dp))
+        Text("點選分類查看相關新聞與資料。", color = Color(0xFF5F7668), textAlign = TextAlign.Center)
+
+        Spacer(Modifier.height(18.dp))
+
+        SdgButtonRow("SDG6", "SDG7", selectedSdg, sdgLabels) { selectedSdg = it }
+        SdgButtonRow("SDG12", "SDG13", selectedSdg, sdgLabels) { selectedSdg = it }
+        SdgButtonRow("SDG14", "SDG15", selectedSdg, sdgLabels) { selectedSdg = it }
+
+        Spacer(Modifier.height(18.dp))
+
+        Text("${selectedSdg} ${sdgLabels[selectedSdg]}", fontSize = 22.sp, fontWeight = FontWeight.Black, color = Color(0xFF12632E))
+
+        Spacer(Modifier.height(10.dp))
+
+        sdgData[selectedSdg]?.forEach { news ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp)
+                    .clickable {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(news.url))
+                        )
+                    },
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White)
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(news.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF173923), lineHeight = 22.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("${news.tag}｜${news.source}｜${news.date}", fontSize = 13.sp, color = Color(0xFF5F7668))
+                    Spacer(Modifier.height(4.dp))
+                    Text("點擊開啟文章 →", fontSize = 13.sp, color = Color(0xFF12632E), fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+fun SdgButtonRow(
+    left: String,
+    right: String,
+    selected: String,
+    labels: Map<String, String>,
+    onSelect: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        SdgButton(left, labels[left] ?: "", selected == left, Modifier.weight(1f)) { onSelect(left) }
+        SdgButton(right, labels[right] ?: "", selected == right, Modifier.weight(1f)) { onSelect(right) }
+    }
+    Spacer(Modifier.height(12.dp))
+}
+
+@Composable
+fun SdgButton(
+    code: String,
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .height(82.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) Color(0xFFDFF5D7) else Color.White
+        )
+    ) {
+        Column(
+            Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(code, color = Color(0xFF12632E), fontWeight = FontWeight.Black)
+            Text(label, color = Color(0xFF173923), fontSize = 13.sp, textAlign = TextAlign.Center)
+        }
+    }
+}
+data class TaiwanEmission(
+    val year: String,
+    val total: Double?,
+    val sink: Double?,
+    val net: Double?,
+    val co2: Double?,
+    val co2Percent: String,
+    val status: String
+)
+
+data class GlobalEmission(
+    val year: String,
+    val country: String,
+    val value: Double
+)
+
+@Composable
+fun EmissionDataPage() {
+    var mode by remember { mutableStateOf("台灣") }
+    var selectedYear by remember { mutableStateOf("2023") }
+
+    val taiwanData = listOf(
+        TaiwanEmission("2020", 285.07, -21.91, 263.17, 271.65, "95.29%", "已整理"),
+        TaiwanEmission("2021", 297.01, -21.85, 275.16, 283.11, "95.32%", "已整理"),
+        TaiwanEmission("2022", 285.98, -21.83, 264.13, 273.68, "95.70%", "已整理"),
+        TaiwanEmission("2023", 278.63, -21.73, 256.90, 267.11, "95.86%", "已整理"),
+        TaiwanEmission("2024", null, null, null, null, "—", "尚未公布"),
+        TaiwanEmission("2025", null, null, null, null, "—", "尚未公布"),
+        TaiwanEmission("2026", null, null, null, null, "—", "尚未公布")
+    )
+
+    val globalData = mapOf(
+        "2020" to listOf(
+            GlobalEmission("2020", "中國", 10.04),
+            GlobalEmission("2020", "美國", 4.32),
+            GlobalEmission("2020", "印度", 2.34),
+            GlobalEmission("2020", "俄羅斯", 1.56),
+            GlobalEmission("2020", "日本", 1.00),
+            GlobalEmission("2020", "德國", 0.60),
+            GlobalEmission("2020", "印尼", 0.58),
+            GlobalEmission("2020", "伊朗", 0.58),
+            GlobalEmission("2020", "南韓", 0.55),
+            GlobalEmission("2020", "加拿大", 0.52)
+        ),
+        "2022" to listOf(
+            GlobalEmission("2022", "中國", 12.66),
+            GlobalEmission("2022", "美國", 4.85),
+            GlobalEmission("2022", "印度", 2.69),
+            GlobalEmission("2022", "俄羅斯", 1.90),
+            GlobalEmission("2022", "日本", 1.08),
+            GlobalEmission("2022", "印尼", 0.69),
+            GlobalEmission("2022", "伊朗", 0.68),
+            GlobalEmission("2022", "德國", 0.67),
+            GlobalEmission("2022", "南韓", 0.63),
+            GlobalEmission("2022", "沙烏地阿拉伯", 0.60)
+        ),
+        "2023" to listOf(
+            GlobalEmission("2023", "中國", 12.50),
+            GlobalEmission("2023", "美國", 6.50),
+            GlobalEmission("2023", "印度", 2.80),
+            GlobalEmission("2023", "俄羅斯", 2.20),
+            GlobalEmission("2023", "印尼", 2.10),
+            GlobalEmission("2023", "巴西", 2.00),
+            GlobalEmission("2023", "日本", 1.30),
+            GlobalEmission("2023", "德國", 0.80),
+            GlobalEmission("2023", "南韓", 0.70),
+            GlobalEmission("2023", "加拿大", 0.65)
+        )
+    )
+
+    val years = listOf("2020", "2021", "2022", "2023", "2024", "2025", "2026")
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            "歷年碳排放量數據",
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Black,
+            color = Color(0xFF12632E)
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            "選擇台灣或全球資料，查看不同年份的排放數據。",
+            color = Color(0xFF5F7668),
+            textAlign = TextAlign.Center,
+            lineHeight = 22.sp
+        )
+
+        Spacer(Modifier.height(18.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SelectCard("台灣", mode == "台灣", Modifier.weight(1f)) {
+                mode = "台灣"
+                selectedYear = "2023"
+            }
+            SelectCard("世界", mode == "世界", Modifier.weight(1f)) {
+                mode = "世界"
+                selectedYear = "2023"
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        SimpleDropdown(
+            label = "選擇年份",
+            selected = selectedYear,
+            options = years
+        ) {
+            selectedYear = it
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        if (mode == "台灣") {
+            val item = taiwanData.first { it.year == selectedYear }
+            TaiwanEmissionView(item, taiwanData)
+        } else {
+            val list = globalData[selectedYear]
+            GlobalEmissionView(selectedYear, list)
+        }
+
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+fun SelectCard(
+    text: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .height(64.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) Color(0xFFDFF5D7) else Color.White
+        )
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF12632E)
+            )
+        }
+    }
+}
+
+@Composable
+fun TaiwanEmissionView(
+    item: TaiwanEmission,
+    allData: List<TaiwanEmission>
+) {
+    if (item.total == null) {
+        NoDataCard("${item.year} 年台灣完整官方資料尚未公布。")
+        return
+    }
+
+    DataCard("總排放量", "${item.total} MtCO₂e")
+    DataCard("淨排放量", "${item.net} MtCO₂e")
+    DataCard("碳匯移除量", "${item.sink} MtCO₂e")
+    DataCard("CO₂ 占比", item.co2Percent)
+
+    Spacer(Modifier.height(14.dp))
+
+    Text(
+        "台灣排放趨勢",
+        fontSize = 22.sp,
+        fontWeight = FontWeight.Black,
+        color = Color(0xFF12632E),
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Spacer(Modifier.height(10.dp))
+
+    allData.filter { it.total != null }.forEach {
+        SimpleBar(
+            label = it.year,
+            value = it.total ?: 0.0,
+            maxValue = 300.0,
+            unit = "MtCO₂e"
+        )
+    }
+}
+
+@Composable
+fun GlobalEmissionView(
+    year: String,
+    list: List<GlobalEmission>?
+) {
+    if (list == null) {
+        val message = if (year == "2021") {
+            "2021 年因資料來源或統計口徑不同，暫不採用。"
+        } else {
+            "${year} 年全球資料尚未提供。"
+        }
+        NoDataCard(message)
+        return
+    }
+
+    val total = list.sumOf { it.value }
+    val top = list.maxByOrNull { it.value }
+
+    DataCard("前十名合計", "${"%.2f".format(total)} GtCO₂e")
+    DataCard("最高排放國家", "${top?.country}｜${top?.value} GtCO₂e")
+
+    Spacer(Modifier.height(14.dp))
+
+    Text(
+        "$year 全球主要國家排行",
+        fontSize = 22.sp,
+        fontWeight = FontWeight.Black,
+        color = Color(0xFF12632E),
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Spacer(Modifier.height(10.dp))
+
+    val max = list.maxOf { it.value }
+    list.forEachIndexed { index, item ->
+        SimpleBar(
+            label = "${index + 1}. ${item.country}",
+            value = item.value,
+            maxValue = max,
+            unit = "GtCO₂e"
+        )
+    }
+}
+
+@Composable
+fun DataCard(title: String, value: String) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, color = Color(0xFF5F7668), fontSize = 14.sp)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                value,
+                color = Color(0xFF12632E),
+                fontSize = 23.sp,
+                fontWeight = FontWeight.Black
+            )
+        }
+    }
+}
+
+@Composable
+fun NoDataCard(text: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Text(
+            text,
+            modifier = Modifier.padding(22.dp),
+            color = Color(0xFF6F8174),
+            fontSize = 16.sp,
+            lineHeight = 24.sp,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+fun SimpleBar(
+    label: String,
+    value: Double,
+    maxValue: Double,
+    unit: String
+) {
+    val ratio = (value / maxValue).coerceIn(0.0, 1.0).toFloat()
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row {
+                Text(
+                    label,
+                    modifier = Modifier.weight(1f),
+                    color = Color(0xFF173923),
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "${"%.2f".format(value)} $unit",
+                    color = Color(0xFF12632E),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(12.dp)
+                    .background(Color(0xFFE5F2E4), RoundedCornerShape(50.dp))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(ratio)
+                        .height(12.dp)
+                        .background(Color(0xFF65BD58), RoundedCornerShape(50.dp))
+                )
+            }
+        }
+    }
+}
+@Composable
+fun SustainablePage() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+
+        // Hero
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text(
+                    "永續發展",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFF12632E)
+                )
+
+                Spacer(Modifier.height(10.dp))
+
+                Text(
+                    "在滿足當代需求的同時，不損害後代子孫滿足需求的能力。",
+                    color = Color(0xFF5F7668),
+                    lineHeight = 24.sp
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        Text(
+            "關鍵概念",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Black,
+            color = Color(0xFF12632E),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        SustainableRow(
+            "定義",
+            "既能滿足我們現今的需求，又不損害子孫後代滿足自身需求的能力。",
+            "環境支柱",
+            "重視生態保護、資源循環、污染減量與氣候行動，降低人類活動對地球的衝擊。"
+        )
+
+        SustainableRow(
+            "經濟支柱",
+            "透過負責任的生產與消費模式，讓經濟成長不再建立於過度消耗資源之上。",
+            "社會支柱",
+            "強調公平、生活品質、健康、教育與弱勢照顧，讓發展成果能被更多人共享。"
+        )
+
+
+
+        Spacer(Modifier.height(20.dp))
+
+        Text(
+            "碳排GO 與 SDGs",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Black,
+            color = Color(0xFF12632E),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(12.dp))
+        SustainableRow(
+            "SDG13\n氣候行動",
+            "透過碳排計算、歷年數據與氣候影響介紹，提升使用者對全球暖化的理解。",
+            "SDG12\n責任消費",
+            "加入 3C 產品碳排、碳足跡與產品生命週期概念，理解消費選擇也會造成碳排。"
+        )
+
+        SustainableRow(
+            "SDG11\n永續城市",
+            "每日交通紀錄與高鐵、捷運站距估算，鼓勵使用大眾運輸降低通勤碳排。",
+            "SDG7\n潔淨能源",
+            "透過能源係數與節能家電介紹，理解用電習慣與低碳能源的重要性。"
+        )
+
+        Spacer(Modifier.height(20.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF12632E)
+            )
+        ) {
+            Column(
+                Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "讓永續從日常開始",
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black
+                )
+
+                Spacer(Modifier.height(10.dp))
+
+                Text(
+                    "每一次交通選擇、用電習慣與消費決定，都能累積改變。",
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 24.sp
+                )
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+fun SustainableRow(
+    leftTitle: String,
+    leftContent: String,
+    rightTitle: String,
+    rightContent: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        SustainableCard(leftTitle, leftContent, Modifier.weight(1f))
+        SustainableCard(rightTitle, rightContent, Modifier.weight(1f))
+    }
+
+    Spacer(Modifier.height(12.dp))
+}
+
+@Composable
+fun SustainableCard(
+    title: String,
+    content: String,
+    modifier: Modifier = Modifier
+) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = modifier
+            .height(120.dp)
+            .clickable { showDialog = true },
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                title,
+                textAlign = TextAlign.Center,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF12632E),
+                fontSize = 18.sp
+            )
+        }
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text("關閉")
+                }
+            },
+            title = {
+                Text(
+                    title,
+                    color = Color(0xFF12632E),
+                    fontWeight = FontWeight.Black
+                )
+            },
+            text = {
+                Text(
+                    content,
+                    lineHeight = 24.sp,
+                    color = Color(0xFF42564A)
+                )
+            }
+        )
+    }
+}
+data class EnvironmentItem(
+    val title: String,
+    val imageRes: Int,
+    val content: String
+)
+
+@Composable
+fun EnvironmentPage() {
+    val items = listOf(
+        EnvironmentItem(
+            "一、生活綠生活",
+            R.drawable.ec,
+            "從食、衣、住、行開始，將環保融入每天選擇。\n\n食：減少肉食、選用當地當季食材、自備餐具與水壺。\n\n衣：避免快時尚，選擇耐用、二手或環保材質衣物。\n\n住：隨手關燈、拔掉插頭、利用自然採光、垃圾分類與資源回收。\n\n行：多步行、騎腳踏車或搭乘公共運輸。"
+        ),
+        EnvironmentItem(
+            "二、消費與環保行動",
+            R.drawable.rc,
+            "從購買前的選擇開始，減少不必要的資源消耗。\n\n選用環保標章、節能標章、省水標章產品。\n\n使用環保集點等綠色回饋工具。\n\n拒絕一次性塑膠製品，例如吸管、塑膠袋與外帶杯。"
+        ),
+        EnvironmentItem(
+            "三、實際參與",
+            R.drawable.cbm,
+            "環境保護不只是在家完成，也能透過公共參與擴大影響力。\n\n參與淨灘淨山活動。\n\n了解空污、森林保護等議題，並分享給親友。\n\n參加地球一小時等節能倡議活動。"
+        ),
+        EnvironmentItem(
+            "四、支持環境友善",
+            R.drawable.evf,
+            "選擇環境友善的餐廳與企業，讓消費成為支持永續的行動。\n\n當越多人願意選擇低碳、友善環境的服務，市場也會逐漸往永續方向改變。"
+        ),
+        EnvironmentItem(
+            "五、守護森林與生物多樣性",
+            R.drawable.m,
+            "參與守護森林及關注生物多樣性的倡議行動。\n\n支持棲地保育、森林保護、物種復育與自然教育，讓土地與生態系統能持續恢復生命力。"
+        )
+    )
+
+    var selectedItem by remember { mutableStateOf<EnvironmentItem?>(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            "守護環境",
+            fontSize = 30.sp,
+            fontWeight = FontWeight.Black,
+            color = Color(0xFF12632E)
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            "從日常習慣到公共參與，每個選擇都能累積成環境改變。",
+            color = Color(0xFF5F7668),
+            textAlign = TextAlign.Center,
+            lineHeight = 22.sp
+        )
+
+        Spacer(Modifier.height(18.dp))
+
+        EnvironmentRow(items[0], items[1]) { selectedItem = it }
+        EnvironmentRow(items[2], items[3]) { selectedItem = it }
+
+        EnvironmentCard(
+            item = items[4],
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            selectedItem = it
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF12632E))
+        ) {
+            Column(
+                Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "每一個日常選擇，都是守護環境的開始",
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(Modifier.height(10.dp))
+
+                Text(
+                    "不需要一次做到完美，只要願意從一個小行動開始，就能累積成對地球更友善的生活方式。",
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 24.sp
+                )
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+    }
+
+    selectedItem?.let {
+        EnvironmentDialog(
+            item = it,
+            onClose = { selectedItem = null }
+        )
+    }
+}
+
+@Composable
+fun EnvironmentRow(
+    left: EnvironmentItem,
+    right: EnvironmentItem,
+    onClick: (EnvironmentItem) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        EnvironmentCard(left, Modifier.weight(1f), onClick)
+        EnvironmentCard(right, Modifier.weight(1f), onClick)
+    }
+
+    Spacer(Modifier.height(12.dp))
+}
+
+@Composable
+fun EnvironmentCard(
+    item: EnvironmentItem,
+    modifier: Modifier = Modifier,
+    onClick: (EnvironmentItem) -> Unit
+) {
+    Card(
+        modifier = modifier
+            .height(120.dp)
+            .clickable { onClick(item) },
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                item.title,
+                color = Color(0xFF12632E),
+                fontWeight = FontWeight.Black,
+                fontSize = 17.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+fun EnvironmentDialog(
+    item: EnvironmentItem,
+    onClose: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        confirmButton = {
+            TextButton(onClick = onClose) {
+                Text("關閉")
+            }
+        },
+        title = {
+            Text(
+                item.title,
+                color = Color(0xFF12632E),
+                fontWeight = FontWeight.Black
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
+                Image(
+                    painter = painterResource(id = item.imageRes),
+                    contentDescription = item.title,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp),
+                    contentScale = ContentScale.Crop
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                Text(
+                    item.content,
+                    color = Color(0xFF42564A),
+                    lineHeight = 24.sp
+                )
+            }
+        }
+    )
+}
+@Composable
+fun StartScreen(onStartClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFFF4FBF2), Color(0xFFDFF5D7))
+                )
+            )
+            .padding(28.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Image(
+                painter = painterResource(id = R.drawable.go),
+                contentDescription = "碳排GO Logo",
+                modifier = Modifier.size(150.dp)
+            )
+
+            Spacer(Modifier.height(18.dp))
+
+            Text(
+                "碳排GO",
+                fontSize = 42.sp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF12632E)
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            Text(
+                "一起行動，減碳未來",
+                fontSize = 20.sp,
+                color = Color(0xFF5F7668),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(34.dp))
+
+            Button(
+                onClick = onStartClick,
+                shape = RoundedCornerShape(50.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23853B))
+            ) {
+                Text("開始使用", fontSize = 18.sp)
+            }
+        }
+    }
+}
+@Composable
+fun StepCounterPage() {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences("step_counter_save", Context.MODE_PRIVATE)
+    }
+
+    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.TAIWAN) }
+    val displayFormat = remember { SimpleDateFormat("yyyy 年 MM 月 dd 日", Locale.TAIWAN) }
+
+    var todayKey by remember { mutableStateOf(dateFormat.format(Date())) }
+    val todayText = displayFormat.format(Date())
+
+    val sensorManager = remember {
+        context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    }
+
+    val stepSensor = remember {
+        sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+    }
+
+    var hasPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACTIVITY_RECOGNITION
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val savedDate = prefs.getString("date", todayKey)
+    val isSameSavedDay = savedDate == todayKey
+
+    var baseSteps by remember {
+        mutableStateOf(
+            if (isSameSavedDay && prefs.contains("baseSteps")) {
+                prefs.getFloat("baseSteps", 0f)
+            } else {
+                null
+            }
+        )
+    }
+    var lastSensorTotal by remember {
+        mutableStateOf(
+            if (isSameSavedDay && prefs.contains("lastSensorTotal")) {
+                prefs.getFloat("lastSensorTotal", 0f)
+            } else {
+                null
+            }
+        )
+    }
+    var currentSteps by remember {
+        mutableStateOf(
+            if (isSameSavedDay) prefs.getInt("currentSteps", 0) else 0
+        )
+    }
+
+    fun saveSteps() {
+        prefs.edit()
+            .putString("date", todayKey)
+            .putInt("currentSteps", currentSteps)
+            .apply()
+    }
+
+    fun saveSensorState() {
+        val editor = prefs.edit()
+            .putString("date", todayKey)
+            .putInt("currentSteps", currentSteps)
+
+        baseSteps?.let { editor.putFloat("baseSteps", it) }
+        lastSensorTotal?.let { editor.putFloat("lastSensorTotal", it) }
+
+        editor.apply()
+    }
+
+    fun resetTodaySteps(newBaseSteps: Float? = lastSensorTotal) {
+        baseSteps = newBaseSteps
+        currentSteps = 0
+
+        val editor = prefs.edit()
+            .putString("date", todayKey)
+            .putInt("currentSteps", 0)
+
+        if (newBaseSteps != null) {
+            editor.putFloat("baseSteps", newBaseSteps)
+        } else {
+            editor.remove("baseSteps")
+        }
+
+        lastSensorTotal?.let { editor.putFloat("lastSensorTotal", it) }
+        editor.apply()
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasPermission = granted
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasPermission) {
+            permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val realToday = dateFormat.format(Date())
+            if (todayKey != realToday) {
+                todayKey = realToday
+                baseSteps = null
+                lastSensorTotal = null
+                currentSteps = 0
+                prefs.edit()
+                    .putString("date", realToday)
+                    .putInt("currentSteps", 0)
+                    .remove("baseSteps")
+                    .remove("lastSensorTotal")
+                    .apply()
+            }
+            delay(60_000)
+        }
+    }
+
+    DisposableEffect(hasPermission, stepSensor, todayKey) {
+        if (hasPermission && stepSensor != null) {
+            val listener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent?) {
+                    val totalSteps = event?.values?.getOrNull(0) ?: return
+                    lastSensorTotal = totalSteps
+
+                    if (baseSteps == null) {
+                        baseSteps = totalSteps
+                    }
+
+                    currentSteps = (totalSteps - (baseSteps ?: totalSteps))
+                        .toInt()
+                        .coerceAtLeast(0)
+
+                    saveSensorState()
+                }
+
+                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            }
+
+            sensorManager.registerListener(
+                listener,
+                stepSensor,
+                SensorManager.SENSOR_DELAY_UI
+            )
+
+            onDispose {
+                sensorManager.unregisterListener(listener)
+            }
+        } else {
+            onDispose {}
+        }
+    }
+
+    LaunchedEffect(currentSteps, todayKey) {
+        saveSteps()
+    }
+
+    val savedCarbon = currentSteps / 10000.0 * 1.3
+    val calories = currentSteps / 10000.0 * 350
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            "計步器",
+            fontSize = 30.sp,
+            fontWeight = FontWeight.Black,
+            color = Color(0xFF12632E)
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            "記錄今天的步數，估算走路減少的碳排放與消耗熱量。",
+            color = Color(0xFF5F7668),
+            textAlign = TextAlign.Center,
+            lineHeight = 22.sp
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Row(
+                modifier = Modifier.padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LineIcon("calendar", true)
+
+                Spacer(Modifier.width(12.dp))
+
+                Column {
+                    Text("今日日期", color = Color(0xFF64806D), fontSize = 14.sp)
+                    Text(
+                        todayText,
+                        color = Color(0xFF12632E),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+
+        if (stepSensor == null) {
+            NoDataCard("這台裝置沒有支援計步器感測器，可能需要使用實體手機測試。")
+            return@Column
+        }
+
+        if (!hasPermission) {
+            NoDataCard("需要允許活動辨識權限，才能讀取計步器資料。")
+
+            Spacer(Modifier.height(12.dp))
+
+            Button(
+                onClick = {
+                    permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23853B)),
+                shape = RoundedCornerShape(50.dp)
+            ) {
+                Text("允許計步器權限")
+            }
+
+            return@Column
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFDCF5D5))
+        ) {
+            Column(
+                modifier = Modifier.padding(26.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "今日步數",
+                    color = Color(0xFF12632E),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    "$currentSteps 步",
+                    color = Color(0xFF12632E),
+                    fontSize = 44.sp,
+                    fontWeight = FontWeight.Black
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    "每 10000 步約可減少 1.3 kg CO2e，並消耗約 350 kcal。",
+                    color = Color(0xFF5F7668),
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        DataCard("減少碳排放", "${"%.4f".format(savedCarbon)} kg CO2e")
+        DataCard("消耗熱量", "${"%.0f".format(calories)} kcal")
+
+        Spacer(Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                resetTodaySteps()
+                Toast.makeText(context, "今日步數已重置", Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(50.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23853B))
+        ) {
+            Text("重置今日步數")
+        }
+
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+private const val CABBAGE_GROW_TOTAL_MS = 6L * 60L * 60L * 1000L
+private const val CABBAGE_MID_STAGE_REMAINING_MS = 4L * 60L * 60L * 1000L
+private const val STEP_REWARD_STEPS = 50
+private const val STEP_REWARD_REDUCE_MS = 10L * 60L * 1000L
+private const val WATER_COOLDOWN_MS = 60L * 60L * 1000L
+private const val WATER_REDUCE_MS = 30L * 60L * 1000L
+
+data class SeedItem(
+    val emoji: String,
+    val name: String,
+    val price: Int,
+    val imageRes: Int? = null
+)
+
+data class BagItem(
+    val emoji: String,
+    val name: String,
+    val count: Int,
+    val imageRes: Int? = null,
+    val sellPrice: Int = 0,
+    val isSeed: Boolean = false,
+    val seed: SeedItem? = null
+)
+
+data class PlantedCrop(
+    val emoji: String,
+    val name: String,
+    val imageRes: Int? = null,
+    val plantedAt: Long = System.currentTimeMillis(),
+    val timeReducedMs: Long = 0L,
+    val lastWateredAt: Long = 0L
+)
+
+fun PlantedCrop.remainingMs(now: Long): Long {
+    return (CABBAGE_GROW_TOTAL_MS - (now - plantedAt) - timeReducedMs).coerceAtLeast(0L)
+}
+
+fun PlantedCrop.stageImageRes(now: Long): Int? {
+    val remaining = remainingMs(now)
+    return when {
+        imageRes == null -> null
+        remaining <= 0L -> R.drawable.c11
+        remaining <= CABBAGE_MID_STAGE_REMAINING_MS -> R.drawable.m11
+        else -> imageRes
+    }
+}
+
+fun formatFarmTime(ms: Long): String {
+    val totalSeconds = (ms / 1000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return "%02d:%02d:%02d".format(hours, minutes, seconds)
+}
+
+val farmSeeds = listOf(
+    SeedItem("🥬", "高麗菜種子", 10, R.drawable.f1),
+    SeedItem("🥦", "花椰菜種子", 20),
+    SeedItem("🥕", "紅蘿蔔種子", 50),
+    SeedItem("🤍", "白蘿蔔種子", 80),
+    SeedItem("🍉", "西瓜種子", 120),
+    SeedItem("🍓", "草莓種子", 150)
+)
+
+fun SeedItem.toBagItem(count: Int = 1): BagItem {
+    return BagItem(
+        emoji = emoji,
+        name = name,
+        count = count,
+        imageRes = imageRes,
+        isSeed = true,
+        seed = this
+    )
+}
+
+fun cabbageBagItem(count: Int): BagItem {
+    return BagItem(
+        emoji = "🥬",
+        name = "高麗菜",
+        count = count,
+        imageRes = R.drawable.kbg,
+        sellPrice = 4
+    )
+}
+
+fun sellPriceByName(name: String): Int {
+    return when (name) {
+        "高麗菜" -> 4
+        "花椰菜" -> 7
+        "胡蘿蔔" -> 15
+        "紅蘿蔔" -> 15
+        "白蘿蔔" -> 22
+        "西瓜" -> 30
+        "草莓" -> 40
+        else -> 0
+    }
+}
+
+fun produceImageResByName(name: String): Int? {
+    return when (name) {
+        "高麗菜" -> R.drawable.kbg
+        else -> null
+    }
+}
+
+fun seedByName(name: String): SeedItem? {
+    return farmSeeds.firstOrNull { it.name == name }
+}
+
+fun cropNameFromSeed(seedName: String): String {
+    return seedName.removeSuffix("種子")
+}
+
+fun MutableList<BagItem>.addStack(item: BagItem, maxSlots: Int = 20): Boolean {
+    val index = indexOfFirst { it.name == item.name && it.isSeed == item.isSeed }
+    if (index >= 0) {
+        this[index] = this[index].copy(count = this[index].count + item.count)
+        return true
+    }
+    if (size >= maxSlots) return false
+    add(item)
+    return true
+}
+
+fun MutableList<BagItem>.removeStack(name: String, count: Int): Boolean {
+    val index = indexOfFirst { it.name == name }
+    if (index < 0 || this[index].count < count) return false
+    val current = this[index]
+    val left = current.count - count
+    if (left <= 0) removeAt(index) else this[index] = current.copy(count = left)
+    return true
+}
+
+fun bagItemsToJson(items: List<BagItem>): String {
+    val array = org.json.JSONArray()
+    items.forEach { item ->
+        array.put(
+            org.json.JSONObject()
+                .put("emoji", item.emoji)
+                .put("name", item.name)
+                .put("count", item.count)
+                .put("isSeed", item.isSeed)
+        )
+    }
+    return array.toString()
+}
+
+fun bagItemsFromJson(json: String?): List<BagItem> {
+    if (json.isNullOrBlank()) return emptyList()
+    return runCatching {
+        val array = org.json.JSONArray(json)
+        buildList {
+            for (index in 0 until array.length()) {
+                val obj = array.getJSONObject(index)
+                val name = obj.getString("name")
+                val emoji = obj.optString("emoji", "")
+                val count = obj.optInt("count", 1).coerceAtLeast(1)
+                val isSeed = obj.optBoolean("isSeed", false)
+                val seed = if (isSeed) seedByName(name) else null
+
+                add(
+                    BagItem(
+                        emoji = if (emoji.isNotBlank()) emoji else seed?.emoji ?: "📦",
+                        name = name,
+                        count = count,
+                        imageRes = if (isSeed) seed?.imageRes else produceImageResByName(name),
+                        sellPrice = if (isSeed) 0 else sellPriceByName(name),
+                        isSeed = isSeed,
+                        seed = seed
+                    )
+                )
+            }
+        }
+    }.getOrDefault(emptyList())
+}
+
+fun cropToJson(crop: PlantedCrop?): String {
+    if (crop == null) return ""
+    return org.json.JSONObject()
+        .put("emoji", crop.emoji)
+        .put("name", crop.name)
+        .put("plantedAt", crop.plantedAt)
+        .put("timeReducedMs", crop.timeReducedMs)
+        .put("lastWateredAt", crop.lastWateredAt)
+        .toString()
+}
+
+fun cropFromJson(json: String?): PlantedCrop? {
+    if (json.isNullOrBlank()) return null
+    return runCatching {
+        val obj = org.json.JSONObject(json)
+        val name = obj.getString("name")
+        val seed = farmSeeds.firstOrNull { cropNameFromSeed(it.name) == name }
+        PlantedCrop(
+            emoji = obj.optString("emoji", seed?.emoji ?: "🌱"),
+            name = name,
+            imageRes = seed?.imageRes,
+            plantedAt = obj.optLong("plantedAt", System.currentTimeMillis()),
+            timeReducedMs = obj.optLong("timeReducedMs", 0L),
+            lastWateredAt = obj.optLong("lastWateredAt", 0L)
+        )
+    }.getOrNull()
+}
+
+@Composable
+fun MiniGameEntry(onBack: () -> Unit) {
+    var progress by remember { mutableStateOf(0f) }
+    var loaded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        for (value in 0..100) {
+            progress = value / 100f
+            delay(50)
+        }
+        loaded = true
+    }
+
+    if (loaded) {
+        FarmGameScreen(onBack = onBack)
+    } else {
+        FarmGameLoading(progress)
+    }
+}
+
+@Composable
+fun FarmGameLoading(progress: Float) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF94D96C))
+            .padding(32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "農場載入中",
+                color = Color(0xFF12632E),
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Black
+            )
+
+            Spacer(Modifier.height(22.dp))
+
+            LinearProgressIndicator(
+                progress = progress,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(14.dp),
+                color = Color(0xFF12632E),
+                trackColor = Color.White
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                "${(progress * 100).toInt()}%",
+                color = Color(0xFF12632E),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+fun FarmGameScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences("farm_game_save", Context.MODE_PRIVATE)
+    }
+
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    var coins by remember { mutableStateOf(prefs.getInt("coins", 1000)) }
+    var tickets by remember { mutableStateOf(prefs.getInt("tickets", 0)) }
+    var currentSteps by remember { mutableStateOf(prefs.getInt("currentSteps", 0)) }
+    var stepBonusUsed by remember { mutableStateOf(prefs.getInt("stepBonusUsed", currentSteps / STEP_REWARD_STEPS)) }
+
+    var houseUnlocked by remember { mutableStateOf(prefs.getBoolean("houseUnlocked", false)) }
+    var field2Unlocked by remember { mutableStateOf(prefs.getBoolean("field2Unlocked", false)) }
+    var field3Unlocked by remember { mutableStateOf(prefs.getBoolean("field3Unlocked", false)) }
+    var showBag by remember { mutableStateOf(false) }
+    var showShop by remember { mutableStateOf(false) }
+    var showExchange by remember { mutableStateOf(false) }
+    var choosingField by remember { mutableStateOf<Int?>(null) }
+    var selectedCrop by remember { mutableStateOf<Pair<Int, PlantedCrop>?>(null) }
+
+    val savedStepsAtOpen = remember { currentSteps }
+    val bagItems = remember {
+        mutableStateListOf<BagItem>().apply {
+            addAll(bagItemsFromJson(prefs.getString("bagItems", "[]")))
+        }
+    }
+    var field1Crop by remember { mutableStateOf(cropFromJson(prefs.getString("field1Crop", ""))) }
+    var field2Crop by remember { mutableStateOf(cropFromJson(prefs.getString("field2Crop", ""))) }
+    var field3Crop by remember { mutableStateOf(cropFromJson(prefs.getString("field3Crop", ""))) }
+
+    fun reduceGrowingTime(amountMs: Long) {
+        field1Crop = field1Crop?.let { it.copy(timeReducedMs = it.timeReducedMs + amountMs) }
+        field2Crop = field2Crop?.let { it.copy(timeReducedMs = it.timeReducedMs + amountMs) }
+        field3Crop = field3Crop?.let { it.copy(timeReducedMs = it.timeReducedMs + amountMs) }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
+
+    LaunchedEffect(
+        coins,
+        tickets,
+        currentSteps,
+        stepBonusUsed,
+        houseUnlocked,
+        field2Unlocked,
+        field3Unlocked,
+        bagItems.toList(),
+        field1Crop,
+        field2Crop,
+        field3Crop
+    ) {
+        prefs.edit()
+            .putInt("coins", coins)
+            .putInt("tickets", tickets)
+            .putInt("currentSteps", currentSteps)
+            .putInt("stepBonusUsed", stepBonusUsed)
+            .putBoolean("houseUnlocked", houseUnlocked)
+            .putBoolean("field2Unlocked", field2Unlocked)
+            .putBoolean("field3Unlocked", field3Unlocked)
+            .putString("bagItems", bagItemsToJson(bagItems))
+            .putString("field1Crop", cropToJson(field1Crop))
+            .putString("field2Crop", cropToJson(field2Crop))
+            .putString("field3Crop", cropToJson(field3Crop))
+            .apply()
+    }
+
+    FarmStepTracker(
+        onStepsChanged = { sessionSteps ->
+            currentSteps = savedStepsAtOpen + sessionSteps
+            val bonusNow = currentSteps / STEP_REWARD_STEPS
+            if (bonusNow > stepBonusUsed) {
+                val diff = bonusNow - stepBonusUsed
+                stepBonusUsed = bonusNow
+                reduceGrowingTime(diff * STEP_REWARD_REDUCE_MS)
+                Toast.makeText(context, "步數達標，作物成長減少 ${diff * 10} 分鐘", Toast.LENGTH_SHORT).show()
+            }
+        }
+    )
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF94D96C))
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.fm),
+            contentDescription = "農場背景",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+
+        FarmStatusPanel(
+            coins = coins,
+            tickets = tickets,
+            cabbage = bagItems.firstOrNull { it.name == "高麗菜" }?.count ?: 0,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 12.dp, end = 12.dp)
+        )
+
+        FarmStepCircle(
+            steps = currentSteps,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 68.dp, end = 18.dp)
+                .size(70.dp)
+        )
+
+        FarmLandButton(
+            unlocked = houseUnlocked,
+            lockText = "500",
+            modifier = Modifier
+                .offset(x = maxWidth * 0.06f, y = maxHeight * 0.055f)
+                .width(maxWidth * 0.30f)
+                .height(maxHeight * 0.085f),
+            onClick = {
+                if (houseUnlocked) {
+                    Toast.makeText(context, "房子功能之後開放", Toast.LENGTH_SHORT).show()
+                } else if (coins >= 500) {
+                    coins -= 500
+                    houseUnlocked = true
+                    Toast.makeText(context, "已解鎖房子土地", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "金幣不足，需要 500 金幣", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+
+        FarmCropPatch(
+            crop = field3Crop,
+            now = now,
+            modifier = Modifier
+                .offset(x = maxWidth * 0.12f, y = maxHeight * 0.245f)
+                .width(maxWidth * 0.64f)
+                .height(maxHeight * 0.16f),
+            onClick = {
+                field3Crop?.let { selectedCrop = 3 to it }
+            }
+        )
+
+        if (field3Crop == null) {
+            FarmLandButton(
+                unlocked = field3Unlocked,
+                lockText = "1000",
+                modifier = Modifier
+                    .offset(x = maxWidth * 0.38f, y = maxHeight * 0.315f)
+                    .width(maxWidth * 0.20f)
+                    .height(maxHeight * 0.052f),
+                onClick = {
+                    if (field3Unlocked) {
+                        choosingField = 3
+                    } else if (coins >= 1000) {
+                        coins -= 1000
+                        field3Unlocked = true
+                        Toast.makeText(context, "已解鎖第三塊田", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "金幣不足，需要 1000 金幣", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+        }
+
+        FarmCropPatch(
+            crop = field2Crop,
+            now = now,
+            modifier = Modifier
+                .offset(x = maxWidth * 0.08f, y = maxHeight * 0.43f)
+                .width(maxWidth * 0.64f)
+                .height(maxHeight * 0.16f),
+            onClick = {
+                field2Crop?.let { selectedCrop = 2 to it }
+            }
+        )
+
+        if (field2Crop == null) {
+            FarmLandButton(
+                unlocked = field2Unlocked,
+                lockText = "300",
+                modifier = Modifier
+                    .offset(x = maxWidth * 0.34f, y = maxHeight * 0.505f)
+                    .width(maxWidth * 0.20f)
+                    .height(maxHeight * 0.052f),
+                onClick = {
+                    if (field2Unlocked) {
+                        choosingField = 2
+                    } else if (coins >= 300) {
+                        coins -= 300
+                        field2Unlocked = true
+                        Toast.makeText(context, "已解鎖第二塊田", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "金幣不足，需要 300 金幣", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+        }
+
+        FarmCropPatch(
+            crop = field1Crop,
+            now = now,
+            modifier = Modifier
+                .offset(x = maxWidth * 0.03f, y = maxHeight * 0.665f)
+                .width(maxWidth * 0.62f)
+                .height(maxHeight * 0.17f),
+            onClick = {
+                field1Crop?.let { selectedCrop = 1 to it }
+            }
+        )
+
+        if (field1Crop == null) {
+            FarmLandButton(
+                unlocked = true,
+                lockText = "",
+                modifier = Modifier
+                    .offset(x = maxWidth * 0.30f, y = maxHeight * 0.735f)
+                    .width(maxWidth * 0.18f)
+                    .height(maxHeight * 0.048f),
+                onClick = {
+                    choosingField = 1
+                }
+            )
+        }
+
+        FarmGameToolbar(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(88.dp),
+            onShopClick = { showShop = true },
+            onBagClick = { showBag = true },
+            onExchangeClick = { showExchange = true },
+            onBackClick = onBack
+        )
+    }
+
+    if (showBag) {
+        FarmBagDialog(
+            bagItems = bagItems,
+            onClose = { showBag = false }
+        )
+    }
+
+    if (showShop) {
+        FarmShopDialog(
+            coins = coins,
+            onBuySeed = { seed ->
+                if (coins >= seed.price) {
+                    val added = bagItems.addStack(seed.toBagItem())
+                    if (added) {
+                        coins -= seed.price
+                        Toast.makeText(context, "買到 ${seed.name}", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "背包已滿", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(context, "金幣不足", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onClose = { showShop = false }
+        )
+    }
+
+    if (showExchange) {
+        FarmExchangeDialog(
+            bagItems = bagItems,
+            onSell = { item, amount ->
+                if (amount <= 0) return@FarmExchangeDialog
+                val sold = bagItems.removeStack(item.name, amount)
+                if (sold) {
+                    coins += item.sellPrice * amount
+                    Toast.makeText(context, "賣出 ${item.name} x$amount", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onClose = { showExchange = false }
+        )
+    }
+
+    choosingField?.let { field ->
+        FarmSeedSelectDialog(
+            bagItems = bagItems,
+            onPlant = { seed ->
+                bagItems.removeStack(seed.name, 1)
+                val crop = PlantedCrop(
+                    emoji = seed.emoji,
+                    name = cropNameFromSeed(seed.name),
+                    imageRes = seed.imageRes
+                )
+
+                when (field) {
+                    1 -> field1Crop = crop
+                    2 -> field2Crop = crop
+                    3 -> field3Crop = crop
+                }
+
+                choosingField = null
+                Toast.makeText(context, "已種下 ${crop.name}", Toast.LENGTH_SHORT).show()
+            },
+            onClose = { choosingField = null }
+        )
+    }
+
+    selectedCrop?.let { (field, crop) ->
+        FarmCropStatusDialog(
+            fieldNumber = field,
+            crop = crop,
+            now = now,
+            onWater = {
+                val watered = crop.copy(
+                    timeReducedMs = crop.timeReducedMs + WATER_REDUCE_MS,
+                    lastWateredAt = now
+                )
+                when (field) {
+                    1 -> field1Crop = watered
+                    2 -> field2Crop = watered
+                    3 -> field3Crop = watered
+                }
+                selectedCrop = null
+                Toast.makeText(context, "澆水成功，成長減少 30 分鐘", Toast.LENGTH_SHORT).show()
+            },
+            onHarvest = {
+                val added = bagItems.addStack(cabbageBagItem(6))
+                if (added) {
+                    when (field) {
+                        1 -> field1Crop = null
+                        2 -> field2Crop = null
+                        3 -> field3Crop = null
+                    }
+                    selectedCrop = null
+                    Toast.makeText(context, "收成 6 顆高麗菜", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "背包已滿，無法收成", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onClose = { selectedCrop = null }
+        )
+    }
+}
+
+@Composable
+fun FarmStepTracker(onStepsChanged: (Int) -> Unit) {
+    val context = LocalContext.current
+    val sensorManager = remember {
+        context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    }
+    val stepSensor = remember {
+        sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+    }
+    var baseSteps by remember { mutableStateOf<Float?>(null) }
+    var hasPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACTIVITY_RECOGNITION
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasPermission = granted
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasPermission) {
+            permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+        }
+    }
+
+    DisposableEffect(hasPermission, stepSensor) {
+        if (hasPermission && stepSensor != null) {
+            val listener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent?) {
+                    val totalSteps = event?.values?.getOrNull(0) ?: return
+                    if (baseSteps == null) baseSteps = totalSteps
+                    onStepsChanged((totalSteps - (baseSteps ?: totalSteps)).toInt().coerceAtLeast(0))
+                }
+
+                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            }
+
+            sensorManager.registerListener(listener, stepSensor, SensorManager.SENSOR_DELAY_UI)
+            onDispose { sensorManager.unregisterListener(listener) }
+        } else {
+            onDispose {}
+        }
+    }
+}
+
+@Composable
+fun FarmStatusPanel(coins: Int, tickets: Int, cabbage: Int, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        FarmStatusPill("🪙", coins.toString())
+        FarmStatusPill("🎟️", tickets.toString())
+        FarmStatusPill("🥬", cabbage.toString())
+    }
+}
+
+@Composable
+fun FarmStatusPill(icon: String, value: String) {
+    Card(
+        shape = RoundedCornerShape(50.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xDD0F2D1A)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(icon, fontSize = 16.sp)
+            Spacer(Modifier.width(4.dp))
+            Text(value, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Black)
+        }
+    }
+}
+
+@Composable
+fun FarmLandButton(
+    unlocked: Boolean,
+    lockText: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier.clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (unlocked) Color(0xCC1F4A2D) else Color(0xCC2B2B2B)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        listOf(Color(0x663E6B4B), Color(0xAA102618))
+                    ),
+                    topLeft = Offset(5f, 5f),
+                    size = Size(size.width - 10f, size.height - 10f),
+                    cornerRadius = CornerRadius(16f, 16f)
+                )
+
+                drawRoundRect(
+                    color = if (unlocked) Color(0xFF9BEE91) else Color(0xFFBDBDBD),
+                    topLeft = Offset(2f, 2f),
+                    size = Size(size.width - 4f, size.height - 4f),
+                    cornerRadius = CornerRadius(16f, 16f),
+                    style = Stroke(width = 4f)
+                )
+            }
+
+            if (unlocked) {
+                Text(
+                    "+",
+                    color = Color(0xFFE8FFE0),
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Black
+                )
+            } else {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("🔒", fontSize = 18.sp)
+                    Text(
+                        "$lockText🪙",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FarmCropPatch(
+    crop: PlantedCrop?,
+    now: Long,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    if (crop == null) return
+
+    Box(
+        modifier = modifier.clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        val imageRes = crop.stageImageRes(now)
+
+        if (imageRes != null) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                    repeat(3) {
+                        Image(
+                            painter = painterResource(id = imageRes),
+                            contentDescription = crop.name,
+                            modifier = Modifier.size(34.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                    repeat(3) {
+                        Image(
+                            painter = painterResource(id = imageRes),
+                            contentDescription = crop.name,
+                            modifier = Modifier.size(34.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                }
+            }
+        } else {
+            Text(crop.emoji, fontSize = 34.sp)
+        }
+    }
+}
+
+@Composable
+fun FarmStepCircle(steps: Int, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(Color(0xFF8BE9FF), Color(0xFF1E9BEA), Color(0xFF0472C0)),
+                    radius = size.minDimension * 0.75f
+                ),
+                radius = size.minDimension / 2f - 3f,
+                center = center
+            )
+            drawCircle(
+                Color.White.copy(alpha = 0.85f),
+                radius = size.minDimension * 0.12f,
+                center = Offset(size.width * 0.32f, size.height * 0.25f)
+            )
+            drawCircle(
+                Color(0xFF01579B),
+                radius = size.minDimension / 2f - 3f,
+                center = center,
+                style = Stroke(width = 4f)
+            )
+            drawArc(
+                color = Color.White.copy(alpha = 0.55f),
+                startAngle = 200f,
+                sweepAngle = 120f,
+                useCenter = false,
+                topLeft = Offset(size.width * 0.18f, size.height * 0.42f),
+                size = Size(size.width * 0.64f, size.height * 0.32f),
+                style = Stroke(width = 5f)
+            )
+        }
+
+        Text(
+            "$steps\n步",
+            color = Color.White,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center,
+            lineHeight = 18.sp
+        )
+    }
+}
+
+@Composable
+fun FarmGameToolbar(
+    modifier: Modifier = Modifier,
+    onShopClick: () -> Unit,
+    onBagClick: () -> Unit,
+    onExchangeClick: () -> Unit,
+    onBackClick: () -> Unit
+) {
+    val context = LocalContext.current
+
+    Row(
+        modifier = modifier
+            .background(Color(0xAA1E2F2A))
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        FarmToolbarButton("🛒", "商店", Modifier.weight(1f), onShopClick)
+        FarmToolbarButton("🎒", "背包", Modifier.weight(1f), onBagClick)
+        FarmToolbarButton("🏦", "交易", Modifier.weight(1f), onExchangeClick)
+        FarmToolbarButton("⚙️", "設定", Modifier.weight(1f)) {
+            Toast.makeText(context, "設定功能之後開放", Toast.LENGTH_SHORT).show()
+        }
+        FarmToolbarButton("↩️", "返回", Modifier.weight(0.8f), onBackClick)
+    }
+}
+
+@Composable
+fun FarmToolbarButton(icon: String, text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Card(
+        modifier = modifier
+            .fillMaxHeight()
+            .clickable { onClick() },
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F2D1A)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawRoundRect(
+                    color = Color(0xFF9BEE91),
+                    topLeft = Offset(2f, 2f),
+                    size = Size(size.width - 4f, size.height - 4f),
+                    cornerRadius = CornerRadius(22f, 22f),
+                    style = Stroke(width = 4f)
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text(icon, fontSize = 27.sp, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(2.dp))
+                Text(text, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+            }
+        }
+    }
+}
+
+@Composable
+fun FarmShopDialog(
+    coins: Int,
+    onBuySeed: (SeedItem) -> Unit,
+    onClose: () -> Unit
+) {
+    Dialog(onDismissRequest = onClose) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 560.dp)
+                .background(Color(0xFFEAF7DF), RoundedCornerShape(20.dp))
+        ) {
+            GamePanelBorder()
+
+            Column(
+                modifier = Modifier
+                    .padding(18.dp)
+                    .padding(top = 4.dp)
+            ) {
+                FarmDialogTitle(title = "商店", subtitle = "目前金幣：$coins 🪙", onClose = onClose)
+                Spacer(Modifier.height(14.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 450.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    farmSeeds.forEach { seed ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF8FFF4), RoundedCornerShape(14.dp))
+                                .clickable { onBuySeed(seed) }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(seed.emoji, fontSize = 30.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(seed.name, color = Color(0xFF005C28), fontSize = 16.sp, fontWeight = FontWeight.Black)
+                                Text("${seed.price} 金幣", color = Color(0xFF2F7D3A), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text("購買", color = Color(0xFF006B2D), fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FarmBagDialog(
+    bagItems: List<BagItem>,
+    onClose: () -> Unit
+) {
+    Dialog(onDismissRequest = onClose) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFEAF7DF), RoundedCornerShape(20.dp))
+        ) {
+            GamePanelBorder()
+
+            Column(modifier = Modifier.padding(18.dp)) {
+                FarmDialogTitle(title = "背包", subtitle = null, onClose = onClose)
+                Spacer(Modifier.height(16.dp))
+
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    for (row in 0 until 4) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            for (col in 0 until 5) {
+                                val index = row * 5 + col
+                                val item = bagItems.getOrNull(index)
+
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f)
+                                        .background(Color(0xFFF8FFF4), RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Canvas(modifier = Modifier.matchParentSize()) {
+                                        drawRoundRect(
+                                            color = Color(0xFFB7D4B7),
+                                            topLeft = Offset.Zero,
+                                            size = size,
+                                            cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx()),
+                                            style = Stroke(width = 2.dp.toPx())
+                                        )
+                                    }
+
+                                    item?.let {
+                                        if (it.imageRes != null && !it.isSeed) {
+                                            Image(
+                                                painter = painterResource(id = it.imageRes),
+                                                contentDescription = it.name,
+                                                modifier = Modifier.size(32.dp),
+                                                contentScale = ContentScale.Fit
+                                            )
+                                        } else {
+                                            Text(it.emoji, fontSize = 24.sp, textAlign = TextAlign.Center)
+                                        }
+
+                                        if (it.count > 1) {
+                                            Text(
+                                                "x${it.count}",
+                                                color = Color.White,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Black,
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .background(Color(0xAA0F2D1A), RoundedCornerShape(8.dp))
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FarmExchangeDialog(
+    bagItems: List<BagItem>,
+    onSell: (BagItem, Int) -> Unit,
+    onClose: () -> Unit
+) {
+    Dialog(onDismissRequest = onClose) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 560.dp)
+                .background(Color(0xFFEAF7DF), RoundedCornerShape(20.dp))
+        ) {
+            GamePanelBorder()
+
+            Column(
+                modifier = Modifier
+                    .padding(18.dp)
+                    .padding(top = 4.dp)
+            ) {
+                FarmDialogTitle(title = "交易所", subtitle = "選擇數量賣出農作物", onClose = onClose)
+                Spacer(Modifier.height(14.dp))
+
+                val sellableItems = bagItems.filter { !it.isSeed && it.sellPrice > 0 && it.count > 0 }
+                if (sellableItems.isEmpty()) {
+                    Text(
+                        "目前沒有可以賣出的農作物",
+                        color = Color(0xFF005C28),
+                        fontWeight = FontWeight.Bold
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 450.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        sellableItems.forEach { item ->
+                            FarmSellRow(item = item, onSell = onSell)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FarmSellRow(item: BagItem, onSell: (BagItem, Int) -> Unit) {
+    var amountText by remember(item.name, item.count) { mutableStateOf("1") }
+    val amount = amountText.toIntOrNull()?.coerceIn(1, item.count) ?: 1
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF8FFF4), RoundedCornerShape(14.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (item.imageRes != null) {
+            Image(
+                painter = painterResource(id = item.imageRes),
+                contentDescription = item.name,
+                modifier = Modifier.size(34.dp),
+                contentScale = ContentScale.Fit
+            )
+        } else {
+            Text(item.emoji, fontSize = 28.sp)
+        }
+
+        Spacer(Modifier.width(10.dp))
+
+        Column(Modifier.weight(1f)) {
+            Text(item.name, color = Color(0xFF005C28), fontWeight = FontWeight.Black)
+            Text("擁有 ${item.count}，單價 ${item.sellPrice} 金幣", color = Color(0xFF2F7D3A), fontSize = 12.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("數量", color = Color(0xFF005C28), fontSize = 12.sp)
+                Spacer(Modifier.width(6.dp))
+                TextField(
+                    value = amountText,
+                    onValueChange = { value ->
+                        amountText = value.filter { it.isDigit() }.take(3)
+                    },
+                    modifier = Modifier
+                        .width(68.dp)
+                        .height(48.dp),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+            }
+        }
+
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                "${amount * item.sellPrice} 金幣",
+                color = Color(0xFF006B2D),
+                fontWeight = FontWeight.Black
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "賣出",
+                    color = Color(0xFF006B2D),
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier
+                        .clickable { onSell(item, amount) }
+                        .background(Color(0xFFDDF5D5), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+                Text(
+                    "全賣",
+                    color = Color.White,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier
+                        .clickable { onSell(item, item.count) }
+                        .background(Color(0xFF23853B), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun FarmDialogTitle(title: String, subtitle: String?, onClose: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                color = Color(0xFF006B2D),
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Black
+            )
+            subtitle?.let {
+                Text(
+                    it,
+                    color = Color(0xFF006B2D),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        FarmCloseButton(onClick = onClose)
+    }
+}
+
+@Composable
+fun GamePanelBorder(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.fillMaxSize()) {
+        drawRoundRect(
+            color = Color(0xFF2F7D3A),
+            topLeft = Offset.Zero,
+            size = size,
+            cornerRadius = CornerRadius(20.dp.toPx(), 20.dp.toPx()),
+            style = Stroke(width = 4.dp.toPx())
+        )
+    }
+}
+
+@Composable
+fun FarmCloseButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .width(58.dp)
+            .height(34.dp)
+            .background(Color(0xFFE51F1F), RoundedCornerShape(2.dp))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            "×",
+            color = Color.White,
+            fontSize = 34.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+fun FarmSeedSelectDialog(
+    bagItems: List<BagItem>,
+    onPlant: (SeedItem) -> Unit,
+    onClose: () -> Unit
+) {
+    val seedItems = bagItems.filter { it.isSeed && it.count > 0 && it.seed != null }
+
+    Dialog(onDismissRequest = onClose) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFEAF7DF), RoundedCornerShape(20.dp))
+        ) {
+            GamePanelBorder()
+
+            Column(modifier = Modifier.padding(18.dp)) {
+                FarmDialogTitle(title = "選擇要種的蔬菜", subtitle = null, onClose = onClose)
+                Spacer(Modifier.height(14.dp))
+
+                if (seedItems.isEmpty()) {
+                    Text(
+                        "背包沒有種子，請先到商店購買種子",
+                        color = Color(0xFF005C28),
+                        fontWeight = FontWeight.Bold
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        seedItems.forEach { item ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFF8FFF4), RoundedCornerShape(12.dp))
+                                    .clickable { item.seed?.let(onPlant) }
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(item.emoji, fontSize = 26.sp)
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    item.name,
+                                    modifier = Modifier.weight(1f),
+                                    color = Color(0xFF005C28),
+                                    fontWeight = FontWeight.Black
+                                )
+                                Text("x${item.count}", color = Color(0xFF12632E), fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FarmCropStatusDialog(
+    fieldNumber: Int,
+    crop: PlantedCrop,
+    now: Long,
+    onWater: () -> Unit,
+    onHarvest: () -> Unit,
+    onClose: () -> Unit
+) {
+    val remaining = crop.remainingMs(now)
+    val canHarvest = remaining <= 0L
+    val canWater = now - crop.lastWateredAt >= WATER_COOLDOWN_MS
+
+    Dialog(onDismissRequest = onClose) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFEAF7DF), RoundedCornerShape(20.dp))
+        ) {
+            GamePanelBorder()
+
+            Column(modifier = Modifier.padding(18.dp)) {
+                FarmDialogTitle(title = "第 $fieldNumber 塊田", subtitle = null, onClose = onClose)
+                Spacer(Modifier.height(12.dp))
+
+                Text(crop.name, color = Color(0xFF005C28), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    if (canHarvest) "可以收成了" else "剩餘時間：${formatFarmTime(remaining)}",
+                    color = Color(0xFF005C28),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                if (canHarvest) {
+                    Button(
+                        onClick = onHarvest,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23853B)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("收成 +6 顆高麗菜")
+                    }
+                } else {
+                    Button(
+                        onClick = onWater,
+                        enabled = canWater,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF23853B)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (canWater) "澆水，減少 30 分鐘" else "澆水冷卻中")
+                    }
+                }
+            }
+        }
+    }
+}
